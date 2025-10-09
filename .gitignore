@@ -1,0 +1,6 @@
+.vscode/
+
+resource/cifar10
+resource/mnist
+
+build/
