@@ -39,12 +39,12 @@ void MLP::train(const vector<vector<double>> &input,
 
       switch (lossFunction) {
       case LossFunction::MSE:
-        total_loss += _mse(target[i], output);
-        loss_derivative = _mseDerivative(target[i], output);
+        total_loss += MSE::f(target[i], output);
+        loss_derivative = MSE::df(target[i], output);
         break;
       case LossFunction::BCE:
-        total_loss += _bce(target[i], output);
-        loss_derivative = _bceDerivative(target[i], output);
+        total_loss += BCE::f(target[i], output);
+        loss_derivative = BCE::df(target[i], output);
         break;
       }
       backward(loss_derivative, learningRate);
@@ -57,43 +57,6 @@ void MLP::train(const vector<vector<double>> &input,
       }
     }
   }
-}
-
-double MLP::_bce(const vector<double> &target, const vector<double> &output) {
-  double sum = 0.0;
-  for (int i = 0; i < output.size(); i++) {
-    sum += target[i] * log(output[i]) + (1 - target[i]) * log((1 - output[i]));
-  }
-  return -sum / target.size();
-}
-
-vector<double> MLP::_bceDerivative(const vector<double> &target,
-                                   const vector<double> &output) {
-  vector<double> grad(output.size());
-  for (int i = 0; i < output.size(); i++) {
-    grad[i] = (output[0] - target[0]) / (output[0] * (1 - output[0]));
-  }
-
-  return grad;
-}
-
-double MLP::_mse(const vector<double> &target, const vector<double> &output) {
-  double sum = 0.0;
-  for (int i = 0; i < target.size(); ++i) {
-    double diff = target[i] - output[i];
-    sum += diff * diff;
-  }
-  return sum / target.size();
-}
-
-vector<double> MLP::_mseDerivative(const vector<double> &target,
-                                   const vector<double> &output) {
-  vector<double> grad(target.size());
-  for (int i = 0; i < target.size(); ++i) {
-    grad[i] = 2.0f * (output[i] - target[i]);
-  }
-
-  return grad;
 }
 
 void MLP::save(const string &filepath) {

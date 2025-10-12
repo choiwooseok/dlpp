@@ -1,13 +1,11 @@
 #pragma once
 
 #include "layers/BaseLayer.h"
-
+#include "lossfunction/lossFunction.h"
 #include <memory>
 #include <vector>
 
 using namespace std;
-
-enum class LossFunction { MSE, BCE };
 
 class MLP {
 public:
@@ -23,15 +21,6 @@ public:
 
   void save(const string &filepath);
   void load(const string &filepath);
-
-private:
-  double _bce(const vector<double> &target, const vector<double> &output);
-  vector<double> _bceDerivative(const vector<double> &target,
-                                const vector<double> &output);
-
-  double _mse(const vector<double> &target, const vector<double> &output);
-  vector<double> _mseDerivative(const vector<double> &target,
-                                const vector<double> &output);
 
 private:
   vector<unique_ptr<BaseLayer>> layers;
