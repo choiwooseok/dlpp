@@ -1,10 +1,7 @@
 #include <chrono>
 
-#include "MLP.h"
+#include "Network.h"
 #include "helper/MNISTLoader.h"
-#include "layers/FullyConnectedLayer.h"
-#include "layers/ReLULayer.h"
-#include "layers/SigmoidLayer.h"
 
 long long getCurrentEpochMillis() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -13,22 +10,21 @@ long long getCurrentEpochMillis() {
 }
 
 int main(int argc, char **argv) {
-
   MNISTLoader loader;
   loader.load("../resource/mnist/mnist_train.csv");
   vector<vector<double>> in = loader.getImages();
   vector<vector<double>> out = loader.getLabels();
 
-  // MLP nn;
-  // nn.addLayer(new FullyConnectedLayer(28 * 28, 128));
-  // nn.addLayer(new ReLULayer());
-  // nn.addLayer(new FullyConnectedLayer(128, 10));
-  // nn.addLayer(new SigmoidLayer());
+  Network nn;
+  nn.addLayer(new FullyConnectedLayer(28 * 28, 128));
+  nn.addLayer(new ReLULayer(128));
+  nn.addLayer(new FullyConnectedLayer(128, 10));
+  nn.addLayer(new SigmoidLayer(10));
 
-  MLP nn;
-  nn.load("../resource/model/mnist_model.json");
+  // Network nn;
+  // nn.load("../resource/model/mnist_model.json");
 
-  nn.train(in, out, 512, 0.001, LossFunction::MSE, true);
+  nn.train<MSE>(in, out, 512, 0.01, true);
 
   nn.save("../resource/model/mnist_model_" +
           std::to_string(getCurrentEpochMillis()) + ".json");

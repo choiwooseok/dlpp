@@ -7,25 +7,25 @@ private:
   double alpha = 0.01f;
 
 public:
-  LReLULayer() : BaseLayer("LReLU"){};
+  explicit LReLULayer(int numInput) : BaseLayer("LReLU", numInput, numInput) {
+    input.resize(numInput);
+    output.resize(numInput);
+  };
   virtual ~LReLULayer() = default;
 
-  vector<double> forward(const vector<double> &input) override {
+  vec_t forward(const vec_t &input) override {
     this->input = input;
-    output.resize(input.size());
     for (int i = 0; i < input.size(); ++i) {
       output[i] = input[i] > 0 ? input[i] : alpha * input[i];
     }
     return output;
   }
 
-  vector<double> backward(const vector<double> &err,
-                          double learningRate) override {
-    vector<double> inputGrad(input.size());
+  vec_t backward(const vec_t &dY, double eta) override {
+    vec_t dX(input.size());
     for (int i = 0; i < input.size(); ++i) {
-      double lreluDerivative = input[i] > 0 ? 1.0 : alpha;
-      inputGrad[i] = err[i] * lreluDerivative;
+      dX[i] = dY[i] * (output[i] > 0 ? val_t(1) : alpha);
     }
-    return inputGrad;
+    return dX;
   }
 };

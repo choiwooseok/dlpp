@@ -4,24 +4,26 @@
 
 class SigmoidLayer : public BaseLayer {
 public:
-  SigmoidLayer() : BaseLayer("SigmoidLayer"){};
+  explicit SigmoidLayer(int numInput)
+      : BaseLayer("SigmoidLayer", numInput, numInput) {
+    input.resize(numInput);
+    output.resize(numInput);
+  };
   virtual ~SigmoidLayer() = default;
 
-  vector<double> forward(const vector<double> &input) override {
+  vec_t forward(const vec_t &input) override {
     this->input = input;
-    output.resize(input.size());
     for (int i = 0; i < input.size(); ++i) {
-      output[i] = 1.0 / (1.0 + exp(-input[i]));
+      output[i] = val_t(1) / (val_t(1) + exp(-input[i]));
     }
     return output;
   }
 
-  vector<double> backward(const vector<double> &err,
-                          double learningRate) override {
-    vector<double> inputGrad(input.size());
+  vec_t backward(const vec_t &dY, double eta) override {
+    vec_t dX(input.size());
     for (int i = 0; i < input.size(); ++i) {
-      inputGrad[i] = err[i] * exp(input[i]) / pow((1 + exp(input[i])), 2);
+      dX[i] = dY[i] * output[i] * (val_t(1) - output[i]);
     }
-    return inputGrad;
+    return dX;
   }
 };

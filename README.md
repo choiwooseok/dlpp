@@ -5,8 +5,6 @@
 
 # Modules
 - Network
-  - MLP
-  - ... TODO add others
 - Layers
   - FC
   - LRelu

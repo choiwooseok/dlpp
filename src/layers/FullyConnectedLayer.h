@@ -1,80 +1,80 @@
 #pragma once
 
 #include "BaseLayer.h"
+
 #include <chrono>
 #include <random>
 
 class FullyConnectedLayer : public BaseLayer {
-private:
-  int numInput;
-  int numOutput;
-  vector<vector<double>> weights;
-  vector<double> biases;
-
 public:
-  FullyConnectedLayer(int numInput, int numOutput)
-      : BaseLayer("FullyConnected"), numInput(numInput), numOutput(numOutput) {
-
-    // Initialize weights and biases
-    weights.resize(numOutput, vector<double>(numInput));
-    biases.resize(numOutput);
-
-    // random initialization
-    std::random_device rd;
-    std::mt19937 gen(
-        rd() ^ std::chrono::system_clock::now().time_since_epoch().count());
-    std::uniform_real_distribution<> dis(-1.0, 1.0);
-
-    for (int i = 0; i < numOutput; ++i) {
-      for (int j = 0; j < numInput; ++j) {
-        weights[i][j] = dis(gen);
-      }
-      biases[i] = dis(gen);
-    }
+  explicit FullyConnectedLayer(int numInput, int numOutput)
+      : BaseLayer("FullyConnected", numInput, numOutput) {
+    _init();
   }
 
   virtual ~FullyConnectedLayer() = default;
 
 public:
-  vector<double> forward(const vector<double> &input) override {
+  vec_t forward(const vec_t &input) override {
     this->input = input;
-    output.resize(numOutput);
-
     for (int i = 0; i < numOutput; ++i) {
-      output[i] = std::inner_product(weights[i].begin(), weights[i].end(),
-                                     input.begin(), biases[i]);
+      output[i] = inner_product(W[i].begin(), W[i].end(), input.begin(), B[i]);
     }
     return output;
   }
 
-  vector<double> backward(const vector<double> &err,
-                          double learningRate) override {
-    vector<double> input_grad(numInput, 0.0);
+  vec_t backward(const vec_t &dY, double eta) override {
+    // dX = W^T dot dY
+    vec_t dX(numInput, val_t(0));
     for (int i = 0; i < numInput; ++i) {
       for (int j = 0; j < numOutput; ++j) {
-        input_grad[i] += weights[j][i] * err[j];
+        dX[i] += W[j][i] * dY[j];
       }
     }
 
     for (int i = 0; i < numOutput; ++i) {
-      biases[i] -= learningRate * err[i];
+      B[i] -= eta * dY[i];
       for (int j = 0; j < numInput; ++j) {
-        weights[i][j] -= learningRate * err[i] * input[j];
+        W[i][j] -= eta * dY[i] * input[j];
       }
     }
 
-    return input_grad;
+    return dX;
   }
 
 public:
-  int getNumInput() const { return numInput; }
-  int getNumOutput() const { return numOutput; }
+  const vector<vec_t> &getWeights() const { return W; }
+  void setWeights(const vector<vec_t> &weights) { this->W = weights; }
 
-  const vector<vector<double>> &getWeights() const { return weights; }
-  void setWeights(const vector<vector<double>> &weights) {
-    this->weights = weights;
+  const vec_t &getBiases() const { return B; }
+  void setBiases(const vec_t &biases) { this->B = biases; }
+
+private:
+  void _init(bool rand = true) {
+    input.resize(numInput);
+    output.resize(numOutput);
+
+    // Initialize weights and biases
+    W.resize(numOutput, vec_t(numInput, val_t(0)));
+    B.resize(numOutput, val_t(0));
+
+    if (rand) {
+      // random initialization
+      std::random_device rd;
+      std::mt19937 gen(
+          rd() ^ std::chrono::system_clock::now().time_since_epoch().count());
+      std::uniform_real_distribution<> dis(val_t(-1), val_t(1));
+
+      for (int i = 0; i < numOutput; ++i) {
+        for (int j = 0; j < numInput; ++j) {
+          W[i][j] = dis(gen);
+        }
+        B[i] = dis(gen);
+      }
+    }
   }
 
-  const vector<double> &getBiases() const { return biases; }
-  void setBiases(const vector<double> &biases) { this->biases = biases; }
+private:
+  tensor_t W;
+  vec_t B;
 };

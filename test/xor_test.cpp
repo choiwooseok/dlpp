@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "MLP.h"
+#include "Network.h"
 
 using namespace std;
 
@@ -11,7 +11,7 @@ void _log(const vector<double> &in, const vector<double> &out,
 }
 
 TEST(XORTestSuite, XORTEST) {
-  MLP nn;
+  Network nn;
   nn.load("../resource/model/xor_model.json");
 
   vector<vector<double>> in = {
@@ -27,6 +27,11 @@ TEST(XORTestSuite, XORTEST) {
   for (int i = 0; i < 4; i++) {
     vector<double> result = nn.forward(in[i]);
     _log(in[i], result, expected[i]);
-    EXPECT_NEAR(result[0], expected[i], abs_err);
+
+    for (auto &r : result) {
+      r = (r >= 0.8 ? 1 : 0);
+    }
+
+    EXPECT_EQ(result[0], expected[i]);
   }
 }

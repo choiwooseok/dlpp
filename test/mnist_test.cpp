@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "MLP.h"
+#include "Network.h"
 #include "helper/MNISTLoader.h"
 
 #include <iostream>
@@ -8,7 +8,7 @@
 using namespace std;
 
 TEST(MNistTestSuite, MNISTTEST) {
-  MLP nn;
+  Network nn;
   nn.load("../resource/model/mnist_model.json");
 
   MNISTLoader loader;
@@ -29,7 +29,10 @@ TEST(MNistTestSuite, MNISTTEST) {
       loader.printData(in[i], out[i]);
     }
   }
+
+  cout << "result : " << correct << " / " << in.size() << endl;
   double accuracy = (double)correct / in.size();
   cout << "accuracy: " << accuracy << endl;
+
   EXPECT_GT(accuracy, 0.6);
 }

@@ -32,14 +32,6 @@ public:
       }
       images.push_back(image);
     }
-
-    cout << "------------------------" << endl;
-    cout << "Total images: " << images.size() << endl;
-    cout << "Total labels: " << labels.size() << endl;
-    cout << "Data Loaded." << endl;
-    cout << "------------------------" << endl;
-
-    _print();
   };
 
   vector<vector<double>> getImages() { return images; }
@@ -65,15 +57,6 @@ public:
   }
 
 private:
-  void _print() {
-    cout << "Print first 3 images:" << endl;
-    for (int i = 0; i < 3; i++) {
-      cout << "image [" << i << "]" << endl;
-      printData(images[i], labels[i]);
-    }
-    cout << "------------------------" << endl;
-  }
-
   std::vector<std::string> _split(const std::string &s, char delimiter) {
     std::vector<std::string> tokens;
     std::string token;

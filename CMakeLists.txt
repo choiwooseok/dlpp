@@ -9,19 +9,6 @@ find_package(nlohmann_json REQUIRED)
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
 ###################
-#    PROJ LIB     #
-###################
-add_library(${PROJECT_NAME}
-    src/MLP.cpp
-)
-target_compile_options(${PROJECT_NAME} PRIVATE -O3 -funroll-loops)
-
-target_link_libraries(${PROJECT_NAME} 
-    PRIVATE 
-    nlohmann_json::nlohmann_json
-)
-
-###################
 #   MNIST TRAIN   #
 ###################
 add_executable(mnist_train
@@ -29,8 +16,9 @@ add_executable(mnist_train
 )
 target_link_libraries(mnist_train 
     PRIVATE 
-    ${PROJECT_NAME}
+    nlohmann_json::nlohmann_json
 )
+target_compile_options(mnist_train PRIVATE -Ofast -funroll-loops)
 
 ###################
 #    XOR TRAIN    #
@@ -40,8 +28,9 @@ add_executable(xor_train
 )
 target_link_libraries(xor_train 
     PRIVATE 
-    ${PROJECT_NAME}
+    nlohmann_json::nlohmann_json
 )
+target_compile_options(xor_train PRIVATE -Ofast -funroll-loops)
 
 ##################
 #    G - TEST    #
@@ -54,6 +43,8 @@ add_executable(${PROJECT_NAME}_test
 
 target_link_libraries(${PROJECT_NAME}_test 
     PRIVATE 
-    ${PROJECT_NAME}
+    nlohmann_json::nlohmann_json
     gtest::gtest
 )
+
+target_compile_options(${PROJECT_NAME}_test  PRIVATE -Ofast -funroll-loops)

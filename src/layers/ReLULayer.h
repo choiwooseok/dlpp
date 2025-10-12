@@ -4,25 +4,25 @@
 
 class ReLULayer : public BaseLayer {
 public:
-  ReLULayer() : BaseLayer("ReLU"){};
+  explicit ReLULayer(int numInput) : BaseLayer("ReLU", numInput, numInput) {
+    input.resize(numInput);
+    output.resize(numInput);
+  };
   virtual ~ReLULayer() = default;
 
-  vector<double> forward(const vector<double> &input) override {
+  vec_t forward(const vec_t &input) override {
     this->input = input;
-    output.resize(input.size());
     for (int i = 0; i < input.size(); ++i) {
-      output[i] = max(input[i], 0.0);
+      output[i] = max(input[i], val_t(0));
     }
     return output;
   }
 
-  vector<double> backward(const vector<double> &err,
-                          double learningRate) override {
-    vector<double> inputGrad(input.size());
+  vec_t backward(const vec_t &dY, double eta) override {
+    vec_t dX(input.size());
     for (int i = 0; i < input.size(); ++i) {
-      double reluDerivative = input[i] > 0.0 ? 1.0 : 0.0;
-      inputGrad[i] = err[i] * reluDerivative;
+      dX[i] = dY[i] * (output[i] > val_t(0) ? val_t(1) : val_t(0));
     }
-    return inputGrad;
+    return dX;
   }
 };

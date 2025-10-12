@@ -1,23 +1,29 @@
 #pragma once
 
+#include "types.h"
+
 #include <numeric>
 #include <string>
-#include <vector>
 
 using namespace std;
 class BaseLayer {
-public:
-  vector<double> input;
-  vector<double> output;
+protected:
+  vec_t input;
+  vec_t output;
+
   string name;
+  int numInput;
+  int numOutput;
 
 public:
-  BaseLayer(string name) : name(name){};
+  BaseLayer(string name, int numInput, int numOutput)
+      : name(name), numInput(numInput), numOutput(numOutput){};
   virtual ~BaseLayer() = default;
 
-  virtual vector<double> forward(const vector<double> &input) = 0;
-  virtual vector<double> backward(const vector<double> &err,
-                                  double learningRate) = 0;
+  virtual vec_t forward(const vec_t &X) = 0;
+  virtual vec_t backward(const vec_t &dY, double eta) = 0;
 
   string getName() { return name; }
+  int getNumInput() const { return numInput; }
+  int getNumOutput() const { return numOutput; }
 };
