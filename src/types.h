@@ -1,9 +1,12 @@
 #pragma once
 
+#include <exception>
 #include <vector>
+
+#include <Eigen/Eigen>
 
 using namespace std;
 
-typedef double val_t;
-typedef vector<val_t> vec_t;
-typedef vector<vec_t> tensor_t;
+typedef float val_t;
+typedef Eigen::VectorXf vec_t;
+typedef Eigen::MatrixXf tensor_t;

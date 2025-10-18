@@ -3,8 +3,8 @@
 #include "Network.h"
 
 long long getCurrentEpochMillis() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
+  using namespace std::chrono;
+  return duration_cast<milliseconds>(system_clock::now().time_since_epoch())
       .count();
 }
 
@@ -15,17 +15,21 @@ int main(int argc, char **argv) {
   nn.addLayer(new FullyConnectedLayer(4, 1));
   nn.addLayer(new SigmoidLayer(1));
 
-  vector<vector<double>> in = {
-      {0.0, 0.0},
-      {0.0, 1.0},
-      {1.0, 0.0},
-      {1.0, 1.0},
-  };
-  vector<vector<double>> out = {{0.0}, {1.0}, {1.0}, {0.0}};
+  tensor_t in(4, 2);
+  in.row(0) << 0.f, 0.f;
+  in.row(1) << 0.f, 1.f;
+  in.row(2) << 1.f, 0.f;
+  in.row(3) << 1.f, 1.f;
 
-  nn.train<MSE>(in, out, 50000, 0.01, true);
-  nn.save("../resource/model/xor_model_" +
-          std::to_string(getCurrentEpochMillis()) + ".json");
+  tensor_t out(4, 1);
+  out.row(0) << 0.f;
+  out.row(1) << 1.f;
+  out.row(2) << 1.f;
+  out.row(3) << 0.f;
+
+  nn.infos();
+  nn.train<MSE>(in, out, 50000, 0.01);
+  nn.save("xor_model_" + std::to_string(getCurrentEpochMillis()) + ".json");
 
   return 0;
 }

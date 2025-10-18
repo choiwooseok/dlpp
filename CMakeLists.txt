@@ -5,8 +5,14 @@ set(CMAKE_CXX_STANDARD 20)
 include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
 find_package(GTest REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
+
+set(DEP_LIBS 
+    Eigen3::Eigen
+    nlohmann_json::nlohmann_json
+)
 
 ###################
 #   MNIST TRAIN   #
@@ -16,9 +22,9 @@ add_executable(mnist_train
 )
 target_link_libraries(mnist_train 
     PRIVATE 
-    nlohmann_json::nlohmann_json
+    ${DEP_LIBS}
 )
-target_compile_options(mnist_train PRIVATE -Ofast -funroll-loops)
+target_compile_options(mnist_train PRIVATE -O3 -ffast-math)
 
 ###################
 #    XOR TRAIN    #
@@ -28,9 +34,9 @@ add_executable(xor_train
 )
 target_link_libraries(xor_train 
     PRIVATE 
-    nlohmann_json::nlohmann_json
+    ${DEP_LIBS}
 )
-target_compile_options(xor_train PRIVATE -Ofast -funroll-loops)
+target_compile_options(xor_train PRIVATE -O3 -ffast-math)
 
 ##################
 #    G - TEST    #
@@ -43,8 +49,8 @@ add_executable(${PROJECT_NAME}_test
 
 target_link_libraries(${PROJECT_NAME}_test 
     PRIVATE 
-    nlohmann_json::nlohmann_json
+    ${DEP_LIBS}
     gtest::gtest
 )
 
-target_compile_options(${PROJECT_NAME}_test  PRIVATE -Ofast -funroll-loops)
+target_compile_options(${PROJECT_NAME}_test  PRIVATE -O3 -ffast-math)

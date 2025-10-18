@@ -37,3 +37,4 @@ make -j12
 - @see here [conanfile.txt](conanfile.txt)
 - nlohmann_json for save & load
 - gtest for test
+- Eigen for matrix calc

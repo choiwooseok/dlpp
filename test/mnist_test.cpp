@@ -1,37 +1,41 @@
 #include <gtest/gtest.h>
 
 #include "Network.h"
-#include "helper/MNISTLoader.h"
+#include "helper/MNISTData.h"
 
 #include <iostream>
 
 using namespace std;
 
+int _max_element_idx(const vec_t &vec) {
+  return max_element(vec.begin(), vec.end()) - vec.begin();
+}
+
 TEST(MNistTestSuite, MNISTTEST) {
   Network nn;
-  nn.load("../resource/model/mnist_model.json");
+  nn.load("mnist_model.json");
+  nn.infos();
 
-  MNISTLoader loader;
-  loader.load("../resource/mnist/mnist_test.csv");
-  vector<vector<double>> in = loader.getImages();
-  vector<vector<double>> out = loader.getLabels();
+  MNISTData data("../resource/mnist/mnist_test.csv");
+  tensor_t in = data.getImages();
+  tensor_t out = data.getLabels();
 
   int correct = 0;
-  for (int i = 0; i < in.size(); i++) {
-    vector<double> result = nn.forward(in[i]);
-    int predicted = max_element(result.begin(), result.end()) - result.begin();
-    int actual = max_element(out[i].begin(), out[i].end()) - out[i].begin();
-    cout << "predicted: " << predicted << ", actual: " << actual << endl;
+  for (int i = 0; i < in.rows(); i++) {
+    vec_t result = nn.forward(in.row(i));
+    int label = _max_element_idx(out.row(i));
+    int predicted = _max_element_idx(result);
 
-    if (predicted == actual) {
+    if (predicted == label) {
       correct++;
     } else {
-      loader.printData(in[i], out[i]);
+      cout << "predicted: " << predicted << ", label: " << label << endl;
+      data.print(in.row(i), out.row(i));
     }
   }
 
-  cout << "result : " << correct << " / " << in.size() << endl;
-  double accuracy = (double)correct / in.size();
+  cout << "result : " << correct << " / " << in.rows() << endl;
+  double accuracy = (double)correct / in.rows();
   cout << "accuracy: " << accuracy << endl;
 
   EXPECT_GT(accuracy, 0.6);

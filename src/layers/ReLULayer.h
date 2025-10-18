@@ -12,16 +12,16 @@ public:
 
   vec_t forward(const vec_t &input) override {
     this->input = input;
-    for (int i = 0; i < input.size(); ++i) {
-      output[i] = max(input[i], val_t(0));
+    for (int i = 0; i < input.size(); i++) {
+      output(i) = max(input(i), val_t(0));
     }
     return output;
   }
 
   vec_t backward(const vec_t &dY, double eta) override {
     vec_t dX(input.size());
-    for (int i = 0; i < input.size(); ++i) {
-      dX[i] = dY[i] * (output[i] > val_t(0) ? val_t(1) : val_t(0));
+    for (int i = 0; i < input.size(); i++) {
+      dX(i) = dY(i) * (input(i) > 0 ? 1 : 0);
     }
     return dX;
   }
