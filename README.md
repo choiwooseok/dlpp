@@ -7,9 +7,11 @@
 - Network
 - Layers
   - FC
-  - LRelu
-  - Relu
-  - Sigmoid
+  - Conv1D
+  - Activations
+    - LRelu
+    - Relu
+    - Sigmoid
   - ... TODO add others
 
 # Build

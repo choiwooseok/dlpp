@@ -14,19 +14,23 @@ TEST(XORTestSuite, XORTEST) {
   nn.load("xor_model.json");
   nn.infos();
 
-  tensor_t in(4, 2);
+  tensor_t in(6, 2);
   in.row(0) << 0.0f, 0.0f;
   in.row(1) << 0.0f, 1.0f;
   in.row(2) << 1.0f, 0.0f;
   in.row(3) << 1.0f, 1.0f;
+  in.row(4) << 3.0f, 1.0f;
+  in.row(5) << 3.0f, 3.0f;
 
-  tensor_t expected(4, 1);
+  tensor_t expected(6, 1);
   expected.row(0) << 0.f;
   expected.row(1) << 1.f;
   expected.row(2) << 1.f;
   expected.row(3) << 0.f;
+  expected.row(4) << 1.f;
+  expected.row(5) << 0.f;
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 6; i++) {
     vec_t result = nn.forward(in.row(i));
     _log(in.row(i), result, expected(i));
 

@@ -41,11 +41,11 @@ public:
       throw runtime_error("label.size() != predicted.size()");
     }
 
-    val_t loss = val_t(0);
-    for (int i = 0; i < predicted.size(); i++) {
-      loss += -label[i] * log(predicted[i]) -
-              (val_t(1) - label[i]) * log((val_t(1) - predicted[i]));
-    }
+    val_t loss = transform_reduce(
+        label.begin(), label.end(), predicted.begin(), 0.0, plus<val_t>(),
+        [](const val_t &l, const val_t &r) {
+          return -l * log(r) - (val_t(1) - l) * log(val_t(1) - r);
+        });
     return loss;
   }
 
@@ -55,10 +55,10 @@ public:
     }
 
     vec_t grad(predicted.size());
-    for (int i = 0; i < predicted.size(); i++) {
-      grad[i] = (predicted[i] - label[i]) /
-                (predicted[i] * (val_t(1) - predicted[i]));
-    }
+    transform(label.begin(), label.end(), predicted.begin(), grad.begin(),
+              [](const val_t &l, const val_t &r) {
+                return (r - l) / (r * (val_t(1) - r));
+              });
     return grad;
   }
 };

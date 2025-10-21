@@ -5,17 +5,13 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 
-#include "types.h"
-
 #include "LossFunction.h"
 
-#include "layers/BaseLayer.h"
-#include "layers/FullyConnectedLayer.h"
-#include "layers/LReLULayer.h"
-#include "layers/ReLULayer.h"
-#include "layers/SigmoidLayer.h"
-
 #include "helper/EigenHelper.h"
+#include "helper/Serializer.h"
+
+#include "layers/base/BaseLayer.h"
+#include "types.h"
 
 using json = nlohmann::json;
 using namespace std::chrono;
@@ -35,6 +31,13 @@ public:
     return output;
   }
 
+  void backward(const vec_t &dY, double eta) {
+    vec_t delta = dY;
+    for (int i = layers.size() - 1; i >= 0; --i) {
+      delta = layers[i]->backward(delta, eta);
+    }
+  }
+
   template <typename LossFunction>
   void train(const tensor_t &input, const tensor_t &label, int epochs,
              double eta, bool shouldAutoSave = false) {
@@ -51,9 +54,7 @@ public:
         L += LossFunction::f(label.row(i), Y);
         vec_t dY = LossFunction::df(label.row(i), Y);
 
-        for (int i = layers.size() - 1; i >= 0; --i) {
-          dY = layers[i]->backward(dY, eta);
-        }
+        backward(dY, eta);
       }
 
       if ((epoch + 1) % 10 == 0) {
@@ -74,16 +75,14 @@ public:
   void infos() {
     int idx = 0;
     for (const auto &layer : layers) {
-      cout << "(" << idx << "): " << layer->getName() << "("
-           << layer->getNumInput() << ", " << layer->getNumOutput() << ")"
-           << endl;
+      cout << "(" << idx << ") " << layer->getName() << endl;
       idx++;
     }
     cout << endl;
   }
 
   void save(const string &fileName) {
-    json model = to_json();
+    json model = Serializer::marshal(layers);
     ofstream file(BASE_DIR + fileName);
     file.clear();
     file << model.dump(2);
@@ -95,83 +94,25 @@ public:
     json model;
     file >> model;
     file.close();
-    from_json(model);
+    Serializer::unmarshal(layers, model);
   }
 
 private:
-  json to_json() {
-    json model;
-
-    for (const auto &layer : layers) {
-      json layer_json;
-      layer_json["type"] = layer->getName();
-      layer_json["numInput"] = layer->getNumInput();
-      layer_json["numOutput"] = layer->getNumOutput();
-
-      if (layer->getName() == "FullyConnected") {
-        FullyConnectedLayer *fc =
-            static_cast<FullyConnectedLayer *>(layer.get());
-        layer_json["weights"] =
-            fromEigenMatrix<val_t, tensor_t>(fc->getWeights());
-        layer_json["biases"] = fromEigenVector<val_t, vec_t>(fc->getBiases());
-      }
-
-      model["layers"].push_back(layer_json);
-    }
-    return model;
-  }
-
-  void from_json(json model) {
-    for (auto &layer_json : model["layers"]) {
-      string type = layer_json["type"];
-      int numInput = layer_json["numInput"];
-      int numOutput = layer_json["numOutput"];
-
-      if (type == "FullyConnected") {
-        vector<vector<val_t>> weights =
-            layer_json["weights"].get<vector<vector<val_t>>>();
-        vector<val_t> biases = layer_json["biases"].get<vector<val_t>>();
-
-        FullyConnectedLayer *fcLayer =
-            new FullyConnectedLayer(numInput, numOutput);
-
-        fcLayer->setWeights(
-            toEigenMatrix<val_t, vector<vector<val_t>>>(weights));
-        fcLayer->setBiases(toEigenVector<val_t, vector<val_t>>(biases));
-
-        layers.emplace_back(fcLayer);
-
-      } else if (type == "ReLU") {
-        layers.emplace_back(new ReLULayer(numInput));
-      } else if (type == "SigmoidLayer") {
-        layers.emplace_back(new SigmoidLayer(numInput));
-      } else if (type == "LReLU") {
-        layers.emplace_back(new LReLULayer(numInput));
-      } else {
-        cerr << "Unknown layer type: " << type << endl;
-      }
-    }
-  }
-
   string _setTempDir(bool flag, steady_clock::time_point &tp) {
     if (!flag) {
       return "";
     }
 
-    string dir =
-        to_string(duration_cast<milliseconds>(tp.time_since_epoch()).count());
+    string dir = to_string(timePointToMillis(tp));
     filesystem::create_directories(BASE_DIR + dir);
     return dir;
   }
 
   void _autoSave(const string &dir, int epoch) {
-    save(dir + "/epoch_" + to_string(epoch + 1) + "_" +
-         to_string(
-             duration_cast<milliseconds>(system_clock::now().time_since_epoch())
-                 .count()) +
-         ".json");
+    string time = to_string(getCurrentTimeMillis());
+    save(dir + "/epoch_" + to_string(epoch + 1) + "_" + time + ".json");
   }
 
 private:
-  vector<unique_ptr<BaseLayer>> layers;
+  vector<shared_ptr<BaseLayer>> layers;
 };

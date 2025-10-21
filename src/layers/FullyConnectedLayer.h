@@ -1,17 +1,11 @@
 #pragma once
 
-#include "BaseLayer.h"
-
-#include <chrono>
-#include <random>
+#include "base/BaseLayer.h"
 
 class FullyConnectedLayer : public BaseLayer {
 public:
   explicit FullyConnectedLayer(int numInput, int numOutput)
-      : BaseLayer("FullyConnected", numInput, numOutput) {
-    input.resize(numInput);
-    output.resize(numOutput);
-
+      : BaseLayer("FullyConnected"), numInput(numInput), numOutput(numOutput) {
     _init();
   }
 
@@ -20,18 +14,23 @@ public:
 public:
   vec_t forward(const vec_t &input) override {
     this->input = input;
-    output = (W * input) + B;
-    return output;
+    return (W * input) + B;
   }
 
   vec_t backward(const vec_t &dY, double eta) override {
     vec_t dX = dY * W.transpose();
-    B -= eta * dY;
-    W -= eta * dY * input.transpose();
+    tensor_t dW = dY * input.transpose();
+    vec_t dB = dY;
+
+    B -= eta * dB;
+    W -= eta * dW;
     return dX;
   }
 
 public:
+  int getNumInput() const { return numInput; }
+  int getNumOutput() const { return numOutput; }
+
   const tensor_t &getWeights() const { return W; }
   void setWeights(const tensor_t &weights) { this->W = weights; }
 
@@ -40,27 +39,26 @@ public:
 
 private:
   void _init(bool rand = true) {
-    // Initialize weights and biases
     W.resize(numOutput, numInput);
     B.resize(numOutput);
 
     if (rand) {
-      // random initialization
-      std::random_device rd;
-      std::mt19937 gen(
-          rd() ^ std::chrono::system_clock::now().time_since_epoch().count());
-      std::uniform_real_distribution<> dis(val_t(-1), val_t(1));
-
       for (int i = 0; i < numOutput; ++i) {
         for (int j = 0; j < numInput; ++j) {
-          W(i, j) = dis(gen);
+          W(i, j) = genRandom();
         }
-        B(i) = dis(gen);
+        B(i) = genRandom();
       }
     }
   }
 
 private:
+  // params
+  int numInput;
+  int numOutput;
   tensor_t W;
   vec_t B;
+
+  // cache
+  vec_t input;
 };
