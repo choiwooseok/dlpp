@@ -1,11 +1,11 @@
 #pragma once
 
-#include "types.h"
-
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
+
+#include "types.h"
 
 using namespace std;
 

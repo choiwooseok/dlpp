@@ -1,5 +1,6 @@
 .vscode/
 
+resource/cifar10
 mnist_test.csv
 mnist_train.csv
 

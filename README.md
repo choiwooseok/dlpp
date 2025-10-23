@@ -7,12 +7,15 @@
 - Network
 - Layers
   - FC
-  - Conv1D
+  - Conv2D
+  - Pooling
+    - Avg
+    - Max
+  - Flatten
   - Activations
     - LRelu
     - Relu
     - Sigmoid
-  - ... TODO add others
 
 # Build
 - [build.sh](build.sh)
@@ -29,15 +32,19 @@ make -j12
 * https://github.com/phoebetronic/mnist
 
 # Executables
-- minist_train
+- minist_train_fc
+- minist_train_conv
 - xor_train
 - dlpp_test (Google Test)
-  - MNISTTEST
   - XORTEST
+  - MNIST
+    - M_FC
+    - M_CNN
 
 ```
 ./dlpp_test --gtest_filter="*XORTest*" 
-./dlpp_test --gtest_filter="*MNistTest*" 
+./dlpp_test --gtest_filter="*M_FC*" 
+./dlpp_test --gtest_filter="*M_CNN*" 
 ```
 
 # 3rd party
