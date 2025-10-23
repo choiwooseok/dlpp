@@ -12,8 +12,11 @@ public:
   virtual ~BaseLayer() = default;
 
 public:
-  virtual vec_t forward(const vec_t &X) = 0;
-  virtual vec_t backward(const vec_t &dY, double eta) = 0;
+  // (N,C,H,W)
+  virtual tensor_t forward(const tensor_t &X) = 0;
+  virtual tensor_t backward(const tensor_t &dY) = 0;
+  virtual void updateParams(double eta) = 0;
+  virtual void info() = 0;
 
   string getName() { return name; }
 

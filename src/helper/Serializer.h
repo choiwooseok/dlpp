@@ -7,11 +7,13 @@
 
 #include "layers/base/BaseLayer.h"
 
+#include "layers/FlattenLayer.h"
 #include "layers/FullyConnectedLayer.h"
 
 #include "layers/activations/LReLULayer.h"
 #include "layers/activations/ReLULayer.h"
 #include "layers/activations/SigmoidLayer.h"
+#include "layers/activations/TanhLayer.h"
 
 using json = nlohmann::json;
 
@@ -26,7 +28,6 @@ public:
       if (layer->getName() == "FullyConnected") {
         _fc(layer_, static_cast<FullyConnectedLayer *>(layer.get()));
       }
-
       model["layers"].push_back(layer_);
     }
     return model;
@@ -37,12 +38,16 @@ public:
       string type = layer["type"];
       if (type == "FullyConnected") {
         __fc(layers, layer);
+      } else if (type == "Flatten") {
+        layers.emplace_back(new FlattenLayer());
       } else if (type == "ReLU") {
         layers.emplace_back(new ReLULayer());
       } else if (type == "Sigmoid") {
         layers.emplace_back(new SigmoidLayer());
       } else if (type == "LReLU") {
         layers.emplace_back(new LReLULayer());
+      } else if (type == "Tanh") {
+        layers.emplace_back(new TanhLayer());
       } else {
         cerr << "Unknown layer type: " << type << endl;
       }
@@ -52,7 +57,7 @@ public:
   static void _fc(json &layer, FullyConnectedLayer *fc) {
     layer["numInput"] = fc->getNumInput();
     layer["numOutput"] = fc->getNumOutput();
-    layer["weights"] = fromEigenMatrix<val_t, tensor_t>(fc->getWeights());
+    layer["weights"] = fromEigenMatrix<val_t, mat_t>(fc->getWeights());
     layer["biases"] = fromEigenVector<val_t, vec_t>(fc->getBiases());
   }
 

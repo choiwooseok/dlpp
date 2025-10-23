@@ -35,6 +35,11 @@ make -j12
   - MNISTTEST
   - XORTEST
 
+```
+./dlpp_test --gtest_filter="*XORTest*" 
+./dlpp_test --gtest_filter="*MNistTest*" 
+```
+
 # 3rd party
 - @see here [conanfile.txt](conanfile.txt)
 - nlohmann_json for save & load

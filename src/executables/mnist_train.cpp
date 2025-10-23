@@ -12,11 +12,11 @@ int main(int argc, char **argv) {
   nn.addLayer(new FullyConnectedLayer(128, 10));
   nn.addLayer(new SigmoidLayer());
 
-  // Network nn;
-  // nn.load("mnist_model.json");
+  tensor_t in = TensorND::fromMat(data.getImages());
+  tensor_t label = TensorND::fromMat(data.getLabels());
 
   nn.infos();
-  nn.train<MSE>(data.getImages(), data.getLabels(), 1000, 0.01, false);
+  nn.train<MSE>(in, label, 500, 0.01, 100, false);
   nn.save("mnist_model_" + std::to_string(getCurrentTimeMillis()) + ".json");
 
   return 0;

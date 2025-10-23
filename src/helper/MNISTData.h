@@ -18,15 +18,15 @@ public:
   MNISTData(const string &filePath) { _load(filePath); }
 
 public:
-  Eigen::MatrixXf getImages() {
+  mat_t getImages() {
     return toEigenMatrix<val_t, vector<vector<val_t>>>(images);
   }
 
-  Eigen::MatrixXf getLabels() {
+  mat_t getLabels() {
     return toEigenMatrix<val_t, vector<vector<val_t>>>(labels);
   }
 
-  void print(const Eigen::RowVectorXf &image, const Eigen::RowVectorXf &label) {
+  void print(const vec_t &image, const vec_t &label) {
     cout << "label: ";
     for (auto l : label) {
       cout << l << " ";
@@ -65,7 +65,7 @@ private:
       }
       images.push_back(image);
     }
-  };
+  }
 
   std::vector<std::string> _split(const std::string &s, char delimiter) {
     std::vector<std::string> tokens;
