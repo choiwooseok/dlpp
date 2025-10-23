@@ -4,9 +4,13 @@
 
 using namespace std;
 
-void _log(const vec_t &in, const vec_t &out, float expected) {
-  cout << "Input: [" << in(0) << ", " << in(1) << "], Predicted: " << out(0)
-       << ", Expected: " << expected << endl;
+int _genRandomInt() { return abs(static_cast<int>(genRandom() * 1000)) % 2; }
+
+void _log(const vec_t &in, float out, float expected) {
+  cout << "Input: [" << in(0) << ", " << in(1) << "]"
+       << ", Predicted: " << out
+       << ", Expected: " << expected
+       << endl;
 }
 
 TEST(XORTestSuite, XORTEST) {
@@ -14,34 +18,33 @@ TEST(XORTestSuite, XORTEST) {
   nn.load("xor_model.json");
   nn.infos();
 
-  mat_t in_(6, 2);
-  in_.row(0) << 0.0f, 0.0f;
-  in_.row(1) << 0.0f, 1.0f;
-  in_.row(2) << 1.0f, 0.0f;
-  in_.row(3) << 1.0f, 1.0f;
-  in_.row(4) << 3.0f, 1.0f;
-  in_.row(5) << 3.0f, 3.0f;
+  int numSamples = 50000;
+  mat_t in(numSamples, 2);
+  mat_t label(numSamples, 1);
 
-  mat_t expected(6, 1);
-  expected.row(0) << 0.f;
-  expected.row(1) << 1.f;
-  expected.row(2) << 1.f;
-  expected.row(3) << 0.f;
-  expected.row(4) << 1.f;
-  expected.row(5) << 0.f;
+  for (int i = 0; i < numSamples; i++) {
+    if (i % 5 == 0) {
+      val_t v = _genRandomInt();
+      in.row(i) << v, v;
+    } else {
+      in.row(i) << _genRandomInt(), _genRandomInt();
+    }
 
-  // Convert to tensor
-  tensor_t in = TensorND::fromMat(in_);
-
-  for (int i = 0; i < 6; i++) {
-    tensor_t in_i = in.nth(i);
-
-    tensor_t pred = nn.forward(in_i);
-
-    vec_t v = pred.flatten();
-
-    _log(in_i.flatten(), v, expected(i));
-
-    EXPECT_EQ((v(0) >= 0.5f ? 1 : 0), (int)expected(i));
+    label.row(i) << (in(i, 0) == in(i, 1) ? 0.0f : 1.0f);
   }
+
+  int correct = 0;
+  for (int i = 0; i < numSamples; i++) {
+    tensor_t pred = nn.forward(fromMat(in.row(i)));
+
+    if ((pred.at(0, 0, 0, 0) >= 0.5f ? 1 : 0) != label(i)) {
+      _log(in.row(i), pred.at(0, 0, 0, 0), label(i));
+    } else {
+      correct++;
+    }
+  }
+  cout << "Result: " << correct << " / " << numSamples << endl;
+  double accuracy = (double)correct / (double)numSamples;
+  cout << "Accuracy: " << accuracy << endl;
+  EXPECT_GT(accuracy, 0.9);
 }

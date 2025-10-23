@@ -3,19 +3,19 @@
 #include "BaseLayer.h"
 
 class BaseActivation : public BaseLayer {
-public:
+ public:
   explicit BaseActivation(const string &name) : BaseLayer(name) {}
   virtual ~BaseActivation() = default;
 
   tensor_t forward(const tensor_t &input) override {
-    this->input = input; // cache
+    this->input = input;  // cache
     return f(input);
   }
 
   tensor_t backward(const tensor_t &dY) override {
     assert(dY.totalSize() == input.totalSize());
-    tensor_t g = df(input);   // shape: same as input
-    tensor_t dX(input.shape); // allocate result
+    tensor_t g = df(input);    // shape: same as input
+    tensor_t dX(input.shape);  // allocate result
     size_t n = input.totalSize();
     for (size_t i = 0; i < n; ++i) {
       dX[i] = dY[i] * g[i];
@@ -33,7 +33,7 @@ public:
   // derivative of activation function
   virtual tensor_t df(const tensor_t &input) = 0;
 
-private:
+ protected:
   // cache
   tensor_t input;
 };

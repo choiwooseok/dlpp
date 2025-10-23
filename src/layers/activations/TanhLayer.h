@@ -3,7 +3,7 @@
 #include "layers/base/BaseActivation.h"
 
 class TanhLayer : public BaseActivation {
-public:
+ public:
   explicit TanhLayer() : BaseActivation("Tanh") {}
   virtual ~TanhLayer() = default;
 

@@ -4,11 +4,11 @@
 #include "layers/base/BaseLayer.h"
 
 class FlattenLayer : public BaseLayer {
-public:
+ public:
   explicit FlattenLayer() : BaseLayer("Flatten") {}
   virtual ~FlattenLayer() = default;
 
-public:
+ public:
   tensor_t forward(const tensor_t &input) override {
     // cache input shape for backward
     lastInput = input;
@@ -48,6 +48,6 @@ public:
 
   void info() override {}
 
-private:
+ private:
   tensor_t lastInput;
 };

@@ -17,20 +17,23 @@ set(DEP_LIBS
 ###################
 #   MNIST TRAIN   #
 ###################
-add_executable(mnist_train
-    src/executables/mnist_train.cpp
-)
-target_link_libraries(mnist_train 
-    PRIVATE 
-    ${DEP_LIBS}
-)
-target_compile_options(mnist_train PRIVATE -O3 -ffast-math)
+set(MNIST_MODELS "fc;conv")
+foreach(MNIST_MODEL IN LISTS MNIST_MODELS)
+    add_executable(mnist_train_${MNIST_MODEL}
+        train/mnist_train_${MNIST_MODEL}.cpp
+    )
+    target_link_libraries(mnist_train_${MNIST_MODEL} 
+        PRIVATE 
+        ${DEP_LIBS}
+    )
+    target_compile_options(mnist_train_${MNIST_MODEL} PRIVATE -O3 -ffast-math)
+endforeach()
 
 ###################
 #    XOR TRAIN    #
 ###################
 add_executable(xor_train
-    src/executables/xor_train.cpp
+    train/xor_train.cpp
 )
 target_link_libraries(xor_train 
     PRIVATE 

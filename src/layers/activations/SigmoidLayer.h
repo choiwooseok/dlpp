@@ -4,7 +4,7 @@
 #include <cmath>
 
 class SigmoidLayer : public BaseActivation {
-public:
+ public:
   explicit SigmoidLayer() : BaseActivation("Sigmoid") {}
   virtual ~SigmoidLayer() = default;
 

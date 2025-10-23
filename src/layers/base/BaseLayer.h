@@ -7,11 +7,11 @@
 
 using namespace std;
 class BaseLayer {
-public:
+ public:
   explicit BaseLayer(string name) : name(name) {}
   virtual ~BaseLayer() = default;
 
-public:
+ public:
   // (N,C,H,W)
   virtual tensor_t forward(const tensor_t &X) = 0;
   virtual tensor_t backward(const tensor_t &dY) = 0;
@@ -20,6 +20,6 @@ public:
 
   string getName() { return name; }
 
-protected:
+ protected:
   string name;
 };

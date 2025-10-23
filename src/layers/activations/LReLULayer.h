@@ -4,10 +4,10 @@
 #include <cmath>
 
 class LReLULayer : public BaseActivation {
-private:
+ private:
   static constexpr val_t alpha = 0.01f;
 
-public:
+ public:
   explicit LReLULayer() : BaseActivation("LReLU") {}
   virtual ~LReLULayer() = default;
 

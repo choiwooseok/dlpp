@@ -7,37 +7,28 @@
 #include <vector>
 using namespace std;
 
-#include "EigenHelper.h"
-
 class MNISTData {
-private:
-  vector<vector<val_t>> images;
-  vector<vector<val_t>> labels;
+ public:
+  explicit MNISTData(const string &filePath) { _load(filePath); }
+  ~MNISTData() = default;
 
-public:
-  MNISTData(const string &filePath) { _load(filePath); }
+ public:
+  vector<vector<val_t>> getImages() { return images; }
+  vector<vector<val_t>> getLabels() { return labels; }
 
-public:
-  mat_t getImages() {
-    return toEigenMatrix<val_t, vector<vector<val_t>>>(images);
-  }
-
-  mat_t getLabels() {
-    return toEigenMatrix<val_t, vector<vector<val_t>>>(labels);
-  }
-
-  void print(const vec_t &image, const vec_t &label) {
+  void print(int idx) {
     cout << "label: ";
-    for (auto l : label) {
+    for (auto l : labels[idx]) {
       cout << l << " ";
     }
     cout << endl;
 
+    const vector<val_t> &image = images[idx];
     string chars = ".#";
-
+    cout << "image: " << endl;
     for (int i = 0; i < 28; i++) {
       for (int j = 0; j < 28; j++) {
-        int char_idx = image[i * 28 + j] * (chars.size() - 1);
+        int char_idx = (image[i * 28 + j] > 0 ? 1 : 0) * (chars.size() - 1);
         cout << chars[char_idx] << " ";
       }
       cout << endl;
@@ -45,7 +36,7 @@ public:
     cout << endl;
   }
 
-private:
+ private:
   void _load(const string &filepath) {
     images.clear();
     labels.clear();
@@ -56,12 +47,12 @@ private:
       vector<string> values = _split(line, ',');
       float target = stof(values[0]);
       vector<val_t> label(10);
-      label[(int)target] = val_t(1);
+      label[static_cast<int>(target)] = val_t(1);
       labels.push_back(label);
 
       vector<val_t> image(28 * 28);
       for (int i = 0; i < 28 * 28; i++) {
-        image[i] = stof(values[i + 1]) > val_t(0) ? val_t(1) : val_t(0);
+        image[i] = stof(values[i + 1]) / val_t(255);
       }
       images.push_back(image);
     }
@@ -76,4 +67,8 @@ private:
     }
     return tokens;
   }
+
+ private:
+  vector<vector<val_t>> images;
+  vector<vector<val_t>> labels;
 };

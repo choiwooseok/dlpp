@@ -3,7 +3,7 @@
 #include "layers/base/BaseActivation.h"
 
 class ReLULayer : public BaseActivation {
-public:
+ public:
   explicit ReLULayer() : BaseActivation("ReLU") {}
   virtual ~ReLULayer() = default;
 

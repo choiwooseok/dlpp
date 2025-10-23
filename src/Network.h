@@ -1,29 +1,27 @@
 #pragma once
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <nlohmann/json.hpp>
-
-#include "LossFunction.h"
-
-#include "helper/EigenHelper.h"
-#include "helper/Serializer.h"
 
 #include "layers/base/BaseLayer.h"
+
+#include "LossFunction.h"
+#include "Serializer.h"
 #include "types.h"
 
 using json = nlohmann::json;
 using namespace std::chrono;
 
 class Network {
-private:
-  inline static const string BASE_DIR = "../resource/model/";
+ public:
+  Network() {}
 
-public:
   void addLayer(BaseLayer *layer) { layers.emplace_back(layer); }
 
-  tensor_t forward(const tensor_t &input) {
+  // Forward prop
+  tensor_t forward(const tensor_t &input) const {
     tensor_t output = input;
     for (const auto &layer : layers) {
       output = layer->forward(output);
@@ -31,125 +29,182 @@ public:
     return output;
   }
 
+  // Backward prop with parameter updates
   void backward(const tensor_t &dY, double eta) {
     tensor_t delta = dY;
-    for (int i = (int)layers.size() - 1; i >= 0; --i) {
+    for (int i = static_cast<int>(layers.size()) - 1; i >= 0; --i) {
       delta = layers[i]->backward(delta);
       layers[i]->updateParams(eta);
     }
   }
 
-  // mini-batch training
+  // Optimized mini-batch training
+  // input (N,C,H,W)
+  // checkPoints -> (epoch + 1) % checkPoints == 0 then save;
   template <typename LossFunction>
-  void train(const tensor_t &input, const tensor_t &label, int epochs,
-             double eta, size_t miniBatchSize = 1,
-             bool shouldAutoSave = false) {
-    steady_clock::time_point begin = steady_clock::now();
+  void train(const tensor_t &input,
+             const tensor_t &label,
+             int epochs,
+             double eta,
+             size_t miniBatchSize = 1,
+             size_t checkPoints = 0) {
+    const steady_clock::time_point begin = steady_clock::now();
+    const size_t numSamples = input.shape[0];
+    const size_t numBatches = (numSamples + miniBatchSize - 1) / miniBatchSize;
 
-    size_t numSamples = input.shape[0];
-    size_t numBatches = (numSamples + miniBatchSize - 1) / miniBatchSize;
+    const bool isCheckPointZero = checkPoints == 0;
+    const string tempDir = isCheckPointZero ? "" : setTempDir(begin);
 
-    string tempDir = _setTempDir(shouldAutoSave, begin);
+    // Pre-allocate batch workspace
+    ensureBatchWorkspace(input, label, miniBatchSize);
 
     for (int epoch = 0; epoch < epochs; ++epoch) {
-      val_t L = val_t(0);
+      val_t totalLoss = val_t(0);
 
+      // Process each batch
       for (size_t batch = 0; batch < numBatches; ++batch) {
-        size_t start = batch * miniBatchSize;
-        size_t currentBatchSize = min(miniBatchSize, numSamples - start);
+        const size_t start = batch * miniBatchSize;
+        const size_t currentBatchSize = std::min(miniBatchSize, numSamples - start);
 
-        tensor_t in_batch = _getBatch(input, start, currentBatchSize);
-        tensor_t label_batch = _getBatch(label, start, currentBatchSize);
+        // Get batch slices
+        getBatchInPlace(input, start, currentBatchSize, batchInput_);
+        getBatchInPlace(label, start, currentBatchSize, batchLabel_);
 
-        tensor_t Y = forward(in_batch);
+        // Forward pass
+        tensor_t Y = forward(batchInput_);
 
-        if ((epoch + 1) % 10 == 0) {
-          L += LossFunction::f(label_batch, Y);
-        }
+        // Compute loss
+        totalLoss += LossFunction::f(batchLabel_, Y);
 
-        tensor_t dY = LossFunction::df(label_batch, Y);
+        // Backward pass
+        tensor_t dY = LossFunction::df(batchLabel_, Y);
         backward(dY, eta);
-      }
 
-      bool isSavePoint = (epoch + 1) % 100 == 0;
-      if (shouldAutoSave && isSavePoint) {
-        _autoSave(tempDir, epoch);
+        // Progress output (reduce I/O overhead)
+        if (batch % 10 == 0 || batch == numBatches - 1) {
+          cout << "\rEpoch " << epoch + 1 << "/" << epochs << " - Batch " << batch + 1 << "/" << numBatches << std::flush;
+        }
       }
-
-      if ((epoch + 1) % 10 == 0) {
-        auto elapsed = duration_cast<seconds>(steady_clock::now() - begin);
-        cout << "epoch: " << epoch + 1 << "/" << epochs
-             << ", loss: " << L / numSamples
-             << ", elapsed time: " << elapsed.count() << "s" << endl;
-      }
-    }
-  }
-
-  void infos() {
-    int idx = 0;
-    for (const auto &layer : layers) {
-      cout << "(" << idx << ") " << layer->getName() << " ";
-      layer->info();
       cout << endl;
-      idx++;
+
+      // checkpoint
+      if (!isCheckPointZero && (epoch + 1) % checkPoints == 0) {
+        saveCheckPoints(tempDir, epoch);
+      }
+
+      // Epoch summary
+      const auto elapsed = duration_cast<seconds>(steady_clock::now() - begin);
+      cout << "Loss: " << totalLoss / static_cast<val_t>(numSamples) << " | Time: " << elapsed.count() << "s" << endl;
     }
-    cout << endl;
   }
 
-  void save(const string &fileName) {
-    json model = Serializer::marshal(layers);
-    ofstream file(BASE_DIR + fileName);
-    file.clear();
+  // Display network architecture
+  void infos() const {
+    cout << "Network Architecture:" << endl;
+    cout << string(60, '=') << endl;
+
+    for (size_t idx = 0; idx < layers.size(); ++idx) {
+      cout << "(" << idx << ") " << layers[idx]->getName() << " ";
+      layers[idx]->info();
+      cout << endl;
+    }
+
+    cout << string(60, '=') << endl;
+  }
+
+  // Save model to JSON
+  void save(const string &fileName) const {
+    const json model = Serializer::marshal(layers);
+
+    const string fullPath = BASE_DIR + fileName;
+    ofstream file(fullPath);
+
+    if (!file.is_open()) {
+      throw std::runtime_error("Failed to open file for saving: " + fullPath);
+    }
+
     file << model.dump(2);
     file.close();
   }
 
+  // Load model from JSON
   void load(const string &fileName) {
-    ifstream file(BASE_DIR + fileName);
+    const string fullPath = BASE_DIR + fileName;
+    ifstream file(fullPath);
+
+    if (!file.is_open()) {
+      throw std::runtime_error("Failed to open file for loading: " + fullPath);
+    }
+
     json model;
     file >> model;
     file.close();
+
+    // Clear existing layers
+    layers.clear();
+
+    // Load new layers
     Serializer::unmarshal(layers, model);
+
+    cout << "Model loaded from: " << fullPath << endl;
   }
 
-private:
-  string _setTempDir(bool flag, steady_clock::time_point &tp) {
-    if (!flag) {
-      return "";
-    }
-
-    string dir = to_string(timePointToMillis(tp));
+ private:
+  // Set temporary directory for checkpoint save
+  string setTempDir(const steady_clock::time_point &tp) const {
+    const string dir = to_string(timePointToMillis(tp));
     filesystem::create_directories(BASE_DIR + dir);
     return dir;
   }
 
-  void _autoSave(const string &dir, int epoch) {
-    string time = to_string(getCurrentTimeMillis());
-    save(dir + "/epoch_" + to_string(epoch + 1) + "_" + time + ".json");
+  void saveCheckPoints(const string &dir, int epoch) const {
+    const string time = to_string(getCurrentTimeMillis());
+    const string fileName = dir + "/epoch_" + to_string(epoch + 1) + "_" + time + ".json";
+    save(fileName);
   }
 
-  // helper: build a mini-batch tensor_t from in starting at index start with
-  // batchSize samples
-  tensor_t _getBatch(const tensor_t &in, size_t start, size_t batchSize) {
-    vector<size_t> outShape{batchSize};
-    for (size_t i = 1; i < in.shape.size(); ++i)
-      outShape.push_back(in.shape[i]);
-
-    tensor_t out(outShape);
-
-    size_t sampleSize = in.totalSize() / in.shape[0];
-
-    for (size_t b = 0; b < batchSize; ++b) {
-      size_t srcOffset = (start + b) * sampleSize;
-      size_t dstOffset = b * sampleSize;
-      for (size_t i = 0; i < sampleSize; ++i) {
-        out.data[dstOffset + i] = in.data[srcOffset + i];
-      }
+  // Pre-allocate batch workspace to avoid repeated allocations
+  void ensureBatchWorkspace(const tensor_t &input, const tensor_t &label, size_t miniBatchSize) {
+    // Allocate workspace for input batch
+    vector<size_t> inputShape = {miniBatchSize};
+    for (size_t i = 1; i < input.shape.size(); ++i) {
+      inputShape.push_back(input.shape[i]);
     }
 
-    return out;
+    if (batchInput_.shape != inputShape) {
+      batchInput_ = tensor_t(inputShape);
+    }
+
+    // Allocate workspace for label batch
+    vector<size_t> labelShape = {miniBatchSize};
+    for (size_t i = 1; i < label.shape.size(); ++i) {
+      labelShape.push_back(label.shape[i]);
+    }
+
+    if (batchLabel_.shape != labelShape) {
+      batchLabel_ = tensor_t(labelShape);
+    }
   }
 
-private:
+  // batch extraction with in-place copy
+  void getBatchInPlace(const tensor_t &source, size_t start, size_t batchSize, tensor_t &dest) const {
+    const size_t sampleSize = source.totalSize() / source.shape[0];
+
+    // Direct memory copy for better performance
+    const val_t *srcPtr = source.data.data() + (start * sampleSize);
+    val_t *dstPtr = dest.data.data();
+    const size_t copySize = batchSize * sampleSize;
+
+    // Use memcpy for contiguous memory
+    std::memcpy(dstPtr, srcPtr, copySize * sizeof(val_t));
+  }
+
+ private:
+  inline static const string BASE_DIR = "../resource/model/";
+
   vector<shared_ptr<BaseLayer>> layers;
+
+  // Workspace for batch processing (reused across iterations)
+  tensor_t batchInput_;
+  tensor_t batchLabel_;
 };
