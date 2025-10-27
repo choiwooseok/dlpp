@@ -23,7 +23,8 @@ class BaseActivation : public BaseLayer {
     return dX;
   }
 
-  void updateParams(double /*eta*/) override {}
+  // Activation layers have no trainable parameters
+  void updateParams(Optimizer * /*optimizer*/) override {}
 
   void info() override { cout << "Activation"; }
 

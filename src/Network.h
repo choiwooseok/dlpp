@@ -16,25 +16,28 @@ using namespace std::chrono;
 
 class Network {
  public:
-  Network() {}
+  Network() : optimizer_(nullptr) {}
+  ~Network() = default;
 
-  void addLayer(BaseLayer *layer) { layers.emplace_back(layer); }
+  void addLayer(BaseLayer *layer) { layers_.emplace_back(layer); }
+
+  void setOptimizer(Optimizer *optimizer) { optimizer_ = optimizer; }
 
   // Forward prop
   tensor_t forward(const tensor_t &input) const {
     tensor_t output = input;
-    for (const auto &layer : layers) {
+    for (const auto &layer : layers_) {
       output = layer->forward(output);
     }
     return output;
   }
 
   // Backward prop with parameter updates
-  void backward(const tensor_t &dY, double eta) {
+  void backward(const tensor_t &dY) {
     tensor_t delta = dY;
-    for (int i = static_cast<int>(layers.size()) - 1; i >= 0; --i) {
-      delta = layers[i]->backward(delta);
-      layers[i]->updateParams(eta);
+    for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
+      delta = layers_[i]->backward(delta);
+      layers_[i]->updateParams(optimizer_);
     }
   }
 
@@ -42,21 +45,27 @@ class Network {
   // input (N,C,H,W)
   // checkPoints -> (epoch + 1) % checkPoints == 0 then save;
   template <typename LossFunction>
-  void train(const tensor_t &input,
-             const tensor_t &label,
+  void train(const tensor_t &train_data,
+             const tensor_t &train_label,
              int epochs,
-             double eta,
+             Optimizer *optimizer,
              size_t miniBatchSize = 1,
              size_t checkPoints = 0) {
+    if (optimizer == nullptr) {
+      throw std::runtime_error("Optimizer cannot be null");
+    }
+
+    setOptimizer(optimizer);
+
     const steady_clock::time_point begin = steady_clock::now();
-    const size_t numSamples = input.shape[0];
+    const size_t numSamples = train_data.shape[0];
     const size_t numBatches = (numSamples + miniBatchSize - 1) / miniBatchSize;
 
     const bool isCheckPointZero = checkPoints == 0;
-    const string tempDir = isCheckPointZero ? "" : setTempDir(begin);
+    const string tempDir = isCheckPointZero ? "" : _setTempDir(begin);
 
     // Pre-allocate batch workspace
-    ensureBatchWorkspace(input, label, miniBatchSize);
+    _ensureBatchWorkspace(train_data, train_label, miniBatchSize);
 
     for (int epoch = 0; epoch < epochs; ++epoch) {
       val_t totalLoss = val_t(0);
@@ -67,8 +76,8 @@ class Network {
         const size_t currentBatchSize = std::min(miniBatchSize, numSamples - start);
 
         // Get batch slices
-        getBatchInPlace(input, start, currentBatchSize, batchInput_);
-        getBatchInPlace(label, start, currentBatchSize, batchLabel_);
+        _getBatchInPlace(train_data, start, currentBatchSize, batchInput_);
+        _getBatchInPlace(train_label, start, currentBatchSize, batchLabel_);
 
         // Forward pass
         tensor_t Y = forward(batchInput_);
@@ -78,9 +87,9 @@ class Network {
 
         // Backward pass
         tensor_t dY = LossFunction::df(batchLabel_, Y);
-        backward(dY, eta);
+        backward(dY);
 
-        // Progress output (reduce I/O overhead)
+        // Progress output
         if (batch % 10 == 0 || batch == numBatches - 1) {
           cout << "\rEpoch " << epoch + 1 << "/" << epochs << " - Batch " << batch + 1 << "/" << numBatches << std::flush;
         }
@@ -89,7 +98,7 @@ class Network {
 
       // checkpoint
       if (!isCheckPointZero && (epoch + 1) % checkPoints == 0) {
-        saveCheckPoints(tempDir, epoch);
+        _saveCheckPoints(tempDir, epoch);
       }
 
       // Epoch summary
@@ -103,9 +112,9 @@ class Network {
     cout << "Network Architecture:" << endl;
     cout << string(60, '=') << endl;
 
-    for (size_t idx = 0; idx < layers.size(); ++idx) {
-      cout << "(" << idx << ") " << layers[idx]->getName() << " ";
-      layers[idx]->info();
+    for (size_t idx = 0; idx < layers_.size(); ++idx) {
+      cout << "(" << idx << ") " << layers_[idx]->getName() << " ";
+      layers_[idx]->info();
       cout << endl;
     }
 
@@ -114,7 +123,7 @@ class Network {
 
   // Save model to JSON
   void save(const string &fileName) const {
-    const json model = Serializer::marshal(layers);
+    const json model = Serializer::marshal(layers_);
 
     const string fullPath = BASE_DIR + fileName;
     ofstream file(fullPath);
@@ -141,30 +150,30 @@ class Network {
     file.close();
 
     // Clear existing layers
-    layers.clear();
+    layers_.clear();
 
     // Load new layers
-    Serializer::unmarshal(layers, model);
+    Serializer::unmarshal(layers_, model);
 
     cout << "Model loaded from: " << fullPath << endl;
   }
 
  private:
   // Set temporary directory for checkpoint save
-  string setTempDir(const steady_clock::time_point &tp) const {
+  string _setTempDir(const steady_clock::time_point &tp) const {
     const string dir = to_string(timePointToMillis(tp));
     filesystem::create_directories(BASE_DIR + dir);
     return dir;
   }
 
-  void saveCheckPoints(const string &dir, int epoch) const {
+  void _saveCheckPoints(const string &dir, int epoch) const {
     const string time = to_string(getCurrentTimeMillis());
     const string fileName = dir + "/epoch_" + to_string(epoch + 1) + "_" + time + ".json";
     save(fileName);
   }
 
   // Pre-allocate batch workspace to avoid repeated allocations
-  void ensureBatchWorkspace(const tensor_t &input, const tensor_t &label, size_t miniBatchSize) {
+  void _ensureBatchWorkspace(const tensor_t &input, const tensor_t &label, size_t miniBatchSize) {
     // Allocate workspace for input batch
     vector<size_t> inputShape = {miniBatchSize};
     for (size_t i = 1; i < input.shape.size(); ++i) {
@@ -187,7 +196,7 @@ class Network {
   }
 
   // batch extraction with in-place copy
-  void getBatchInPlace(const tensor_t &source, size_t start, size_t batchSize, tensor_t &dest) const {
+  void _getBatchInPlace(const tensor_t &source, size_t start, size_t batchSize, tensor_t &dest) const {
     const size_t sampleSize = source.totalSize() / source.shape[0];
 
     // Direct memory copy for better performance
@@ -202,7 +211,8 @@ class Network {
  private:
   inline static const string BASE_DIR = "../resource/model/";
 
-  vector<shared_ptr<BaseLayer>> layers;
+  vector<shared_ptr<BaseLayer>> layers_;
+  Optimizer *optimizer_;
 
   // Workspace for batch processing (reused across iterations)
   tensor_t batchInput_;

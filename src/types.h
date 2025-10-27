@@ -158,10 +158,7 @@ struct Tensor {
   // In-place reshape (modifies current tensor)
   void reshapeInPlace(const std::vector<size_t> &newShape) {
     // Validate that total size is preserved
-    size_t newSize = 1;
-    for (size_t dim : newShape) {
-      newSize *= dim;
-    }
+    size_t newSize = std::accumulate(newShape.begin(), newShape.end(), 1, std::multiplies<size_t>());
     assert(newSize == totalSize() && "Reshape: new shape must have same total size");
 
     // Update shape and recalculate strides
@@ -236,10 +233,8 @@ struct Tensor {
     dims.inputWidth = static_cast<int>(shape[3]);
     dims.kernelHeight = kernelHeight;
     dims.kernelWidth = kernelWidth;
-    dims.outputHeight =
-        (dims.inputHeight + 2 * pad - kernelHeight) / stride + 1;
-    dims.outputWidth =
-        (dims.inputWidth + 2 * pad - kernelWidth) / stride + 1;
+    dims.outputHeight = (dims.inputHeight + 2 * pad - kernelHeight) / stride + 1;
+    dims.outputWidth = (dims.inputWidth + 2 * pad - kernelWidth) / stride + 1;
     dims.patchSize = dims.channels * kernelHeight * kernelWidth;
     dims.numColumns = dims.outputHeight * dims.outputWidth;
     return dims;

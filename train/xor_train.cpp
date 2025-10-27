@@ -40,16 +40,17 @@ int main(int argc, char **argv) {
   // ============================================================
 
   const int epochs = 10000;
-  const double learningRate = 0.01;
+  GD opt(0.01);  // learning rate = 0.01
 
-  nn.train<MSE>(in, label, epochs, learningRate);
+  nn.train<BCE>(in, label, epochs, &opt);
 
   // ============================================================
   // Save Model
   // ============================================================
 
-  std::string modelName = "xor_model_" + std::to_string(getCurrentTimeMillis()) + ".json";
-  nn.save(modelName);
+  std::string modelName = "xor_model_" + std::to_string(getCurrentTimeMillis());
+  std::string extension = ".json";
+  nn.save(modelName + extension);
 
   std::cout << "\n"
             << std::string(60, '=') << std::endl;

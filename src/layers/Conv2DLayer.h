@@ -11,21 +11,21 @@
 
 class Conv2DLayer : public BaseLayer {
  public:
-  Conv2DLayer(size_t inChannels,
-              size_t outChannels,
-              size_t kernelHeight,
-              size_t kernelWidth,
-              size_t stride = 1,
-              size_t pad = 0,
+  Conv2DLayer(int inChannels,
+              int outChannels,
+              int kernelHeight,
+              int kernelWidth,
+              int stride = 1,
+              int pad = 0,
               INIT random = INIT::XAVIER)
       : BaseLayer("Conv2D"),
-        inChannels_(static_cast<int>(inChannels)),
-        outChannels_(static_cast<int>(outChannels)),
-        kernelHeight_(static_cast<int>(kernelHeight)),
-        kernelWidth_(static_cast<int>(kernelWidth)),
-        stride_(static_cast<int>(stride)),
-        pad_(static_cast<int>(pad)),
-        patchSize_(static_cast<int>(inChannels) * static_cast<int>(kernelHeight) * static_cast<int>(kernelWidth)),
+        inChannels_(inChannels),
+        outChannels_(outChannels),
+        kernelHeight_(kernelHeight),
+        kernelWidth_(kernelWidth),
+        stride_(stride),
+        pad_(pad),
+        patchSize_(inChannels * kernelHeight * kernelWidth),
         accumSteps_(0) {
     _initializeParameters(random);
   }
@@ -39,7 +39,6 @@ class Conv2DLayer : public BaseLayer {
       return _createOutputTensor(dims);
     }
 
-    // Reuse cached matrices if possible
     _ensureWorkspaceSize(dims);
 
     // Batched im2col transformation (in-place into workspace)
@@ -84,19 +83,22 @@ class Conv2DLayer : public BaseLayer {
     return dX;
   }
 
-  void updateParams(double eta) override {
-    if (accumSteps_ == 0) {
+  void updateParams(Optimizer *optimizer) override {
+    if (accumSteps_ == 0 || optimizer == nullptr) {
       return;
     }
 
-    const val_t invSteps = val_t(1) / static_cast<val_t>(accumSteps_);
-    const val_t lr = static_cast<val_t>(eta);
+    // Average the accumulated gradients
+    mat_t avgDW = dW_accum_ / static_cast<val_t>(accumSteps_);
+    vec_t avgDB = dB_accum_ / static_cast<val_t>(accumSteps_);
 
-    // Fused scale and update
-    weights_.noalias() -= (lr * invSteps) * dW_accum_;
-    biases_.noalias() -= (lr * invSteps) * dB_accum_;
+    // Use optimizer to update parameters
+    optimizer->update(weights_, avgDW, layerId_ + "_W");
+    optimizer->update(biases_, avgDB, layerId_ + "_B");
 
-    _resetGradientAccumulators();
+    dW_accum_.setZero();
+    dB_accum_.setZero();
+    accumSteps_ = 0;
   }
 
   void info() override {
@@ -141,10 +143,8 @@ class Conv2DLayer : public BaseLayer {
     dims.inputChannels = static_cast<int>(X.shape[1]);
     dims.inputHeight = static_cast<int>(X.shape[2]);
     dims.inputWidth = static_cast<int>(X.shape[3]);
-    dims.outputHeight =
-        (dims.inputHeight + 2 * pad_ - kernelHeight_) / stride_ + 1;
-    dims.outputWidth =
-        (dims.inputWidth + 2 * pad_ - kernelWidth_) / stride_ + 1;
+    dims.outputHeight = (dims.inputHeight + 2 * pad_ - kernelHeight_) / stride_ + 1;
+    dims.outputWidth = (dims.inputWidth + 2 * pad_ - kernelWidth_) / stride_ + 1;
     dims.numColumns = dims.outputHeight * dims.outputWidth;
     return dims;
   }
@@ -161,18 +161,15 @@ class Conv2DLayer : public BaseLayer {
     const int totalCols = dims.batchSize * dims.numColumns;
 
     // Resize workspaces only if needed
-    if (colWorkspace_.rows() != patchSize_ ||
-        colWorkspace_.cols() != totalCols) {
+    if (colWorkspace_.rows() != patchSize_ || colWorkspace_.cols() != totalCols) {
       colWorkspace_.resize(patchSize_, totalCols);
     }
-    if (outWorkspace_.rows() != outChannels_ ||
-        outWorkspace_.cols() != totalCols) {
+    if (outWorkspace_.rows() != outChannels_ || outWorkspace_.cols() != totalCols) {
       outWorkspace_.resize(outChannels_, totalCols);
     }
   }
 
-  void _buildBatchedColumnsInPlace(const tensor_t &X,
-                                   const ConvDimensions &dims) {
+  void _buildBatchedColumnsInPlace(const tensor_t &X, const ConvDimensions &dims) {
     // Parallel im2col for each sample
     for (int n = 0; n < dims.batchSize; ++n) {
       const int colOffset = n * dims.numColumns;
@@ -196,8 +193,7 @@ class Conv2DLayer : public BaseLayer {
       val_t *ySample = yData + (n * outChannels_ * dims.numColumns);
 
       for (int oc = 0; oc < outChannels_; ++oc) {
-        const val_t *workRow =
-            workData + (oc * outWorkspace_.cols() + colOffset);
+        const val_t *workRow = workData + (oc * outWorkspace_.cols() + colOffset);
         val_t *yChannel = ySample + (oc * dims.numColumns);
 
         // Memcpy for contiguous data
@@ -208,8 +204,7 @@ class Conv2DLayer : public BaseLayer {
     return Y;
   }
 
-  void _buildGradientMatrixInPlace(const tensor_t &dY,
-                                   const ConvDimensions &dims) {
+  void _buildGradientMatrixInPlace(const tensor_t &dY, const ConvDimensions &dims) {
     const int outW = dims.outputWidth;
     const int outH = dims.outputHeight;
 
@@ -250,10 +245,8 @@ class Conv2DLayer : public BaseLayer {
               const int ih = oh * stride_ + kh - pad_;
               const int iw = ow * stride_ + kw - pad_;
 
-              if (ih >= 0 && ih < dims.inputHeight && iw >= 0 &&
-                  iw < dims.inputWidth) {
-                dX.at(n, ic, ih, iw) +=
-                    colWorkspace_(patchIdx, colOffset + col);
+              if (ih >= 0 && ih < dims.inputHeight && iw >= 0 && iw < dims.inputWidth) {
+                dX.at(n, ic, ih, iw) += colWorkspace_(patchIdx, colOffset + col);
               }
               ++patchIdx;
             }
@@ -272,41 +265,31 @@ class Conv2DLayer : public BaseLayer {
     dW_accum_ = mat_t::Zero(outChannels_, patchSize_);
     dB_accum_ = vec_t::Zero(outChannels_);
 
-    if (random == INIT::XAVIER) {
-      _applyXavierInitialization();
-    } else if (random == INIT::HE) {
-      _applyHeInitialization();
+    switch (random) {
+      case INIT::XAVIER: {
+        const int fanIn = inChannels_ * kernelHeight_ * kernelWidth_;
+        const int fanOut = outChannels_ * kernelHeight_ * kernelWidth_;
+        const val_t scale = std::sqrt(val_t(2) / static_cast<val_t>(fanIn + fanOut));
+        _randomWeight(scale);
+        break;
+      }
+      case INIT::HE: {
+        const val_t scale = std::sqrt(val_t(2) / static_cast<val_t>(patchSize_));
+        _randomWeight(scale);
+        break;
+      }
+      case INIT::NONE:
+      default:
+        break;
     }
   }
 
-  void _applyHeInitialization() {
-    const val_t scale = std::sqrt(val_t(2) / static_cast<val_t>(patchSize_));
-
+  void _randomWeight(const val_t scale) {
     for (int r = 0; r < weights_.rows(); ++r) {
       for (int c = 0; c < weights_.cols(); ++c) {
         weights_(r, c) = genRandom() * scale;
       }
     }
-  }
-
-  void _applyXavierInitialization() {
-    // Xavier: std = sqrt(2 / (fan_in + fan_out))
-    const int fanIn = inChannels_ * kernelHeight_ * kernelWidth_;
-    const int fanOut = outChannels_ * kernelHeight_ * kernelWidth_;
-    const val_t scale =
-        std::sqrt(val_t(2) / static_cast<val_t>(fanIn + fanOut));
-
-    for (int r = 0; r < weights_.rows(); ++r) {
-      for (int c = 0; c < weights_.cols(); ++c) {
-        weights_(r, c) = genRandom() * scale;
-      }
-    }
-  }
-
-  void _resetGradientAccumulators() {
-    dW_accum_.setZero();
-    dB_accum_.setZero();
-    accumSteps_ = 0;
   }
 
  private:

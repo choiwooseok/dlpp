@@ -30,54 +30,50 @@ class FullyConnectedLayer : public BaseLayer {
       return _createOutputTensor(0);
     }
 
-    // Create output tensor
     tensor_t output = _createOutputTensor(dims.batchSize);
 
-    // Optimized batch GEMM: Y = X * W^T + b
+    // batch GEMM: Y = X * W^T + b
     _forward(input, output, dims);
 
-    // Cache input for backward (only store reference/shape info)
-    lastInputShape_ = input.shape;
     lastInput_ = input;
-
     return output;
   }
 
   tensor_t backward(const tensor_t &dY) override {
-    assert(!lastInputShape_.empty() && "Backward called before forward");
-
     const auto dims = _extractDims(lastInput_);
 
     assert(dims.featureSize == numInput_ && "FullyConnectedLayer: cached input feature size mismatch");
 
     if (dims.batchSize == 0) {
-      return tensor_t(lastInputShape_);
+      return tensor_t(lastInput_.shape);
     }
 
     // Accumulate gradients
     _accumulateGradients(lastInput_, dY, dims);
 
     // Compute input gradients
-    tensor_t dX(lastInputShape_);
+    tensor_t dX(lastInput_.shape);
     _backward(dY, dX, dims);
 
     return dX;
   }
 
-  void updateParams(double eta) override {
-    if (accumSteps_ == 0) {
+  void updateParams(Optimizer *optimizer) override {
+    if (accumSteps_ == 0 || optimizer == nullptr) {
       return;
     }
 
-    // Fused scale and update
-    const val_t invSteps = val_t(1) / static_cast<val_t>(accumSteps_);
-    const val_t lr = static_cast<val_t>(eta);
-    const val_t scaledLR = lr * invSteps;
+    // Average the accumulated gradients
+    mat_t avgDW = dW_accum_ / static_cast<val_t>(accumSteps_);
+    vec_t avgDB = dB_accum_ / static_cast<val_t>(accumSteps_);
 
-    W_.noalias() -= scaledLR * dW_accum_;
-    B_.noalias() -= scaledLR * dB_accum_;
+    // Use optimizer to update parameters
+    optimizer->update(weights_, avgDW, layerId_ + "_W");
+    optimizer->update(biases_, avgDB, layerId_ + "_B");
 
-    _resetGradientAccumulators();
+    dW_accum_.setZero();
+    dB_accum_.setZero();
+    accumSteps_ = 0;
   }
 
   void info() override {
@@ -89,16 +85,16 @@ class FullyConnectedLayer : public BaseLayer {
   int getNumInput() const { return numInput_; }
   int getNumOutput() const { return numOutput_; }
 
-  const mat_t &getWeights() const { return W_; }
+  const mat_t &getWeights() const { return weights_; }
   void setWeights(const mat_t &weights) {
     assert(weights.rows() == numOutput_ && weights.cols() == numInput_);
-    W_ = weights;
+    weights_ = weights;
   }
 
-  const vec_t &getBiases() const { return B_; }
+  const vec_t &getBiases() const { return biases_; }
   void setBiases(const vec_t &biases) {
     assert(biases.size() == numOutput_);
-    B_ = biases;
+    biases_ = biases;
   }
 
  private:
@@ -108,18 +104,12 @@ class FullyConnectedLayer : public BaseLayer {
   };
 
   Dimensions _extractDims(const tensor_t &input) const {
+    bool isNdimGT2 = input.ndim() >= 2;
+
     Dimensions dims;
-
-    // Handle different input shapes
-    if (input.ndim() >= 2) {
-      dims.batchSize = input.shape[0];
-      const size_t total = input.totalSize();
-      dims.featureSize = (dims.batchSize > 0) ? (total / dims.batchSize) : 0;
-    } else {
-      dims.batchSize = 1;
-      dims.featureSize = input.totalSize();
-    }
-
+    dims.batchSize = isNdimGT2 ? input.shape[0] : 1;
+    dims.featureSize = isNdimGT2 ? ((dims.batchSize > 0) ? (input.totalSize() / dims.batchSize) : 0)
+                                 : input.totalSize();
     return dims;
   }
 
@@ -132,12 +122,12 @@ class FullyConnectedLayer : public BaseLayer {
     auto X = input.asMatrixConst(dims.batchSize, dims.featureSize);
     auto Y = output.asMatrix(dims.batchSize, numOutput_);
 
-    // Optimized GEMM: Y = X * W^T + b
+    // GEMM: Y = X * W^T + b
     // Using noalias() to avoid temporary allocation
-    Y.noalias() = X * W_.transpose();
+    Y.noalias() = X * weights_.transpose();
 
     // Add bias to each row
-    Y.rowwise() += B_.transpose();
+    Y.rowwise() += biases_.transpose();
   }
 
   void _accumulateGradients(const tensor_t &input, const tensor_t &dY, const Dimensions &dims) {
@@ -160,51 +150,41 @@ class FullyConnectedLayer : public BaseLayer {
     auto dXmat = dX.asMatrix(dims.batchSize, dims.featureSize);
 
     // Compute input gradients: dX = dY * W
-    dXmat.noalias() = dYmat * W_;
+    dXmat.noalias() = dYmat * weights_;
   }
 
   void _initializeParameters(INIT random) {
     // Initialize weights and biases
-    W_ = mat_t::Zero(numOutput_, numInput_);
-    B_ = vec_t::Zero(numOutput_);
+    weights_ = mat_t::Zero(numOutput_, numInput_);
+    biases_ = vec_t::Zero(numOutput_);
 
     // Initialize gradient accumulators
     dW_accum_ = mat_t::Zero(numOutput_, numInput_);
     dB_accum_ = vec_t::Zero(numOutput_);
 
-    if (random == INIT::XAVIER) {
-      _applyXavierInitialization();
-    } else if (random == INIT::HE) {
-      _applyHeInitialization();
+    switch (random) {
+      case INIT::XAVIER: {
+        const val_t scale = std::sqrt(val_t(2) / static_cast<val_t>(numInput_ + numOutput_));
+        _randomWeight(scale);
+        break;
+      }
+      case INIT::HE: {
+        const val_t scale = std::sqrt(val_t(2) / static_cast<val_t>(numInput_));
+        _randomWeight(scale);
+        break;
+      }
+      case INIT::NONE:
+      default:
+        break;
     }
   }
 
-  void _applyHeInitialization() {
-    const val_t scale = std::sqrt(val_t(2) / static_cast<val_t>(numInput_));
-
-    for (int i = 0; i < numOutput_; ++i) {
-      for (int j = 0; j < numInput_; ++j) {
-        W_(i, j) = genRandom() * scale;
+  void _randomWeight(const val_t scale) {
+    for (int r = 0; r < weights_.rows(); ++r) {
+      for (int c = 0; c < weights_.cols(); ++c) {
+        weights_(r, c) = genRandom() * scale;
       }
     }
-  }
-
-  void _applyXavierInitialization() {
-    // Xavier: std = sqrt(2 / (fan_in + fan_out))
-    const val_t scale =
-        std::sqrt(val_t(2) / static_cast<val_t>(numInput_ + numOutput_));
-
-    for (int r = 0; r < W_.rows(); ++r) {
-      for (int c = 0; c < W_.cols(); ++c) {
-        W_(r, c) = genRandom() * scale;
-      }
-    }
-  }
-
-  void _resetGradientAccumulators() {
-    dW_accum_.setZero();
-    dB_accum_.setZero();
-    accumSteps_ = 0;
   }
 
  private:
@@ -213,8 +193,8 @@ class FullyConnectedLayer : public BaseLayer {
   int numOutput_;
 
   // Trainable parameters
-  mat_t W_;  // (numOutput x numInput)
-  vec_t B_;  // (numOutput)
+  mat_t weights_;  // (numOutput x numInput)
+  vec_t biases_;   // (numOutput)
 
   // Gradient accumulators for mini-batch optimization
   mat_t dW_accum_;  // (numOutput x numInput)
@@ -223,5 +203,4 @@ class FullyConnectedLayer : public BaseLayer {
 
   // Cached for backward pass
   tensor_t lastInput_;
-  std::vector<size_t> lastInputShape_;
 };

@@ -64,16 +64,17 @@ int main(int argc, char **argv) {
   // ============================================================
 
   const int epochs = 30;
-  const double learningRate = 0.001;
+  GD opt(1e-4);
 
-  nn.train<MSE>(in, label, epochs, learningRate);
+  nn.train<CCE>(in, label, epochs, &opt);
 
   // ============================================================
   // Save Model
   // ============================================================
 
-  std::string modelName = "mnist_cnn_model_" + std::to_string(getCurrentTimeMillis()) + ".json";
-  nn.save(modelName);
+  std::string modelName = "mnist_cnn_model_" + std::to_string(getCurrentTimeMillis());
+  std::string extension = ".json";
+  nn.save(modelName + extension);
 
   std::cout << "\n"
             << std::string(60, '=') << std::endl;

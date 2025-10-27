@@ -61,7 +61,7 @@ class BasePoolingLayer : public BaseLayer {
 
  public:
   // Pooling has no trainable parameters
-  void updateParams(double /*eta*/) override {}
+  void updateParams(Optimizer * /*optimizer*/) override {}
 
   void info() override {
     cout << "["

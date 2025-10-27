@@ -14,6 +14,8 @@ class MNISTData {
 
  public:
   vector<vector<val_t>> getImages() { return images; }
+
+  // one-hot
   vector<vector<val_t>> getLabels() { return labels; }
 
   void print(int idx) {

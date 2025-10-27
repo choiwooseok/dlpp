@@ -16,6 +16,10 @@
     - LRelu
     - Relu
     - Sigmoid
+- Optimizer
+  - GD
+  - SGD
+  - Adam
 
 # Build
 - [build.sh](build.sh)

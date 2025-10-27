@@ -38,13 +38,13 @@ class FlattenLayer : public BaseLayer {
     tensor_t dX(s);
     for (size_t n = 0; n < N; ++n) {
       for (size_t f = 0; f < featSize; ++f) {
-        dX.data[(int)(n * featSize + f)] = dY({n, f});
+        dX.data[static_cast<int>(n * featSize + f)] = dY({n, f});
       }
     }
     return dX;
   }
 
-  void updateParams(double /*eta*/) override {}
+  void updateParams(Optimizer * /*optimizer*/) override {}
 
   void info() override {}
 
