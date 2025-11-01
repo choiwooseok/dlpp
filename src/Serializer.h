@@ -12,6 +12,8 @@
 #include "layers/FlattenLayer.h"
 #include "layers/FullyConnectedLayer.h"
 #include "layers/MaxPoolingLayer.h"
+#include "layers/BatchNormLayer.h"
+#include "layers/DropoutLayer.h"
 
 #include "layers/activations/LReLULayer.h"
 #include "layers/activations/ReLULayer.h"
@@ -37,6 +39,10 @@ class Serializer {
         _avg(layer_, static_cast<AveragePoolingLayer *>(layer.get()));
       } else if (layer->getName() == "MaxPooling") {
         _max(layer_, static_cast<MaxPoolingLayer *>(layer.get()));
+      } else if (layer->getName() == "BatchNorm") {
+        _batchnorm(layer_, static_cast<BatchNormLayer *>(layer.get()));
+      } else if (layer->getName() == "Dropout") {
+        _dropout(layer_, static_cast<DropoutLayer *>(layer.get()));
       }
       model["layers"].push_back(layer_);
     }
@@ -54,6 +60,10 @@ class Serializer {
         __avg(layers, layer);
       } else if (type == "MaxPooling") {
         __max(layers, layer);
+      } else if (type == "BatchNorm") {
+        __batchnorm(layers, layer);
+      } else if (type == "Dropout") {
+        __dropout(layers, layer);
       } else if (type == "Flatten") {
         layers.emplace_back(new FlattenLayer());
       } else if (type == "ReLU") {
@@ -171,5 +181,43 @@ class Serializer {
     MaxPoolingLayer *max = new MaxPoolingLayer(BasePoolingLayer::with_input_dims, inputWidth, inputHeight, channels, poolWidth, poolHeight, stride, pad);
 
     layers.emplace_back(max);
+  }
+
+  static void _batchnorm(json &layer, BatchNormLayer *bn) {
+    layer["numFeatures"] = bn->getNumFeatures();
+    layer["gamma"] = toStd1DVector(bn->getGamma());
+    layer["beta"] = toStd1DVector(bn->getBeta());
+    layer["runningMean"] = toStd1DVector(bn->getRunningMean());
+    layer["runningVar"] = toStd1DVector(bn->getRunningVar());
+  }
+
+  static void __batchnorm(vector<shared_ptr<BaseLayer>> &layers, json &layer) {
+    int numFeatures = layer["numFeatures"];
+    BatchNormLayer *bn = new BatchNormLayer(numFeatures);
+
+    vector<val_t> gamma = layer["gamma"].get<vector<val_t>>();
+    bn->setGamma(toEigenVector(gamma));
+
+    vector<val_t> beta = layer["beta"].get<vector<val_t>>();
+    bn->setBeta(toEigenVector(beta));
+
+    vector<val_t> runningMean = layer["runningMean"].get<vector<val_t>>();
+    bn->setRunningMean(toEigenVector(runningMean));
+
+    vector<val_t> runningVar = layer["runningVar"].get<vector<val_t>>();
+    bn->setRunningVar(toEigenVector(runningVar));
+
+    layers.emplace_back(bn);
+  }
+
+  // Dropout serialization
+  static void _dropout(json &layer, DropoutLayer *dropout) {
+    layer["dropoutRate"] = dropout->getDropoutRate();
+  }
+
+  static void __dropout(vector<shared_ptr<BaseLayer>> &layers, json &layer) {
+    double dropoutRate = layer["dropoutRate"];
+    DropoutLayer *dropout = new DropoutLayer(dropoutRate);
+    layers.emplace_back(dropout);
   }
 };

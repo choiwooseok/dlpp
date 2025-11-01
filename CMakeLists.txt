@@ -13,6 +13,17 @@ set(DEP_LIBS
     Eigen3::Eigen
     nlohmann_json::nlohmann_json
 )
+###################
+#  CIFAR10 TRAIN  #
+###################
+add_executable(cifar10_train
+    train/cifar10_train.cpp
+)
+target_link_libraries(cifar10_train 
+    PRIVATE 
+    ${DEP_LIBS}
+)
+target_compile_options(cifar10_train PRIVATE -O3 -ffast-math)
 
 ###################
 #   MNIST TRAIN   #
@@ -48,6 +59,7 @@ add_executable(${PROJECT_NAME}_test
     test/test_main.cpp
     test/xor_test.cpp
     test/mnist_test.cpp
+    test/cifar10_test.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_test 

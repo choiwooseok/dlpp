@@ -320,22 +320,6 @@ class CategoricalCrossEntropy {
 
     return grad;
   }
-
-  // Optimized version for Softmax + CCE combination
-  // Returns: predicted - label (much simpler gradient)
-  static tensor_t dfWithSoftmax(const tensor_t &label, const tensor_t &predicted) {
-    assert(label.shape == predicted.shape);
-
-    tensor_t grad(predicted.shape);
-    const size_t totalSize = grad.totalSize();
-    const val_t factor = val_t(1) / static_cast<val_t>(label.shape[0]);
-
-    for (size_t i = 0; i < totalSize; ++i) {
-      grad.data[i] = factor * (predicted.data[i] - label.data[i]);
-    }
-
-    return grad;
-  }
 };
 
 // Alias for common usage

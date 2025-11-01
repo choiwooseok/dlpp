@@ -33,7 +33,7 @@ struct Tensor {
   Tensor() = default;
   ~Tensor() = default;
 
-  explicit Tensor(const std::vector<size_t> &shape_) : shape(shape_) {
+  explicit Tensor(const std::vector<size_t> &shape) : shape(shape) {
     _calcStrides();
     _allocateData();
   }
@@ -100,7 +100,8 @@ struct Tensor {
     const size_t offset = n * sliceSize;
 
     Tensor slice;
-    slice.shape = std::vector<size_t>(shape.begin() + 1, shape.end());
+    slice.shape = {1};
+    slice.shape.insert(slice.shape.end(), shape.begin() + 1, shape.end());
     slice._calcStrides();
     slice.data = vec_t(static_cast<int>(sliceSize));
 
@@ -370,4 +371,8 @@ static long long timePointToMillis(const std::chrono::steady_clock::time_point &
 static long long getCurrentTimeMillis() {
   using namespace std::chrono;
   return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+inline static int max_element_idx(const vec_t &v) {
+  return max_element(v.begin(), v.end()) - v.begin();
 }

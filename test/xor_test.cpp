@@ -4,7 +4,7 @@
 
 using namespace std;
 
-int _genRandomInt() { return abs(static_cast<int>(genRandom() * 1000)) % 2; }
+int _genRandomInt() { return abs(static_cast<int>(genRandom() * 1000)) % 10; }
 
 void _log(const vec_t &in, float out, float expected) {
   cout << "Input: [" << in(0) << ", " << in(1) << "]"
@@ -13,12 +13,12 @@ void _log(const vec_t &in, float out, float expected) {
        << endl;
 }
 
-TEST(XORTestSuite, XORTEST) {
+TEST(XORTestSuite, XORTest) {
   Network nn;
   nn.load("xor_model.json");
   nn.infos();
 
-  int numSamples = 50000;
+  int numSamples = 10000;
   mat_t in(numSamples, 2);
   mat_t label(numSamples, 1);
 
@@ -37,8 +37,8 @@ TEST(XORTestSuite, XORTEST) {
   for (int i = 0; i < numSamples; i++) {
     tensor_t pred = nn.forward(fromMat(in.row(i)));
 
-    if ((pred.at(0, 0, 0, 0) >= 0.5f ? 1 : 0) != label(i)) {
-      _log(in.row(i), pred.at(0, 0, 0, 0), label(i));
+    if ((pred[0] >= 0.5f ? 1 : 0) != label(i)) {
+      _log(in.row(i), pred[0], label(i));
     } else {
       correct++;
     }

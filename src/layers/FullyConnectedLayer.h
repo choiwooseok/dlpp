@@ -13,7 +13,8 @@ class FullyConnectedLayer : public BaseLayer {
       : BaseLayer("FullyConnected"),
         numInput_(numInput),
         numOutput_(numOutput),
-        accumSteps_(0) {
+        accumSteps_(0),
+        isDimInitialized_(false) {
     _initializeParameters(random);
   }
 
@@ -21,39 +22,38 @@ class FullyConnectedLayer : public BaseLayer {
 
  public:
   tensor_t forward(const tensor_t &input) override {
-    // Extract dimensions
-    const auto dims = _extractDims(input);
+    if (isDimInitialized_ == false) {
+      _initializeDims(input);
+    }
 
-    assert(dims.featureSize == numInput_ && "FullyConnectedLayer: input feature size mismatch");
+    assert(cachedFeatureSize_ == numInput_ && "FullyConnectedLayer: input feature size mismatch");
 
-    if (dims.batchSize == 0) {
+    if (cachedBatchSize_ == 0) {
       return _createOutputTensor(0);
     }
 
-    tensor_t output = _createOutputTensor(dims.batchSize);
+    tensor_t output = _createOutputTensor(cachedBatchSize_);
 
-    // batch GEMM: Y = X * W^T + b
-    _forward(input, output, dims);
+    // Batch GEMM: Y = X * W^T + b
+    _forward(input, output);
 
     lastInput_ = input;
     return output;
   }
 
   tensor_t backward(const tensor_t &dY) override {
-    const auto dims = _extractDims(lastInput_);
+    assert(cachedFeatureSize_ == numInput_ && "FullyConnectedLayer: cached input feature size mismatch");
 
-    assert(dims.featureSize == numInput_ && "FullyConnectedLayer: cached input feature size mismatch");
-
-    if (dims.batchSize == 0) {
+    if (cachedBatchSize_ == 0) {
       return tensor_t(lastInput_.shape);
     }
 
-    // Accumulate gradients
-    _accumulateGradients(lastInput_, dY, dims);
+    // Accumulate gradients (use cached batch size)
+    _accumulateGradients(lastInput_, dY);
 
     // Compute input gradients
     tensor_t dX(lastInput_.shape);
-    _backward(dY, dX, dims);
+    _backward(dY, dX);
 
     return dX;
   }
@@ -98,42 +98,37 @@ class FullyConnectedLayer : public BaseLayer {
   }
 
  private:
-  struct Dimensions {
-    size_t batchSize;
-    size_t featureSize;
-  };
-
-  Dimensions _extractDims(const tensor_t &input) const {
+  void _initializeDims(const tensor_t &input) {
     bool isNdimGT2 = input.ndim() >= 2;
+    cachedBatchSize_ = isNdimGT2 ? input.shape[0] : 1;
 
-    Dimensions dims;
-    dims.batchSize = isNdimGT2 ? input.shape[0] : 1;
-    dims.featureSize = isNdimGT2 ? ((dims.batchSize > 0) ? (input.totalSize() / dims.batchSize) : 0)
-                                 : input.totalSize();
-    return dims;
+    cachedFeatureSize_ = isNdimGT2 ? ((cachedBatchSize_ > 0) ? (input.totalSize() / cachedBatchSize_)
+                                                             : 0)
+                                   : input.totalSize();
+
+    isDimInitialized_ = true;
   }
 
   tensor_t _createOutputTensor(size_t batchSize) const {
     return tensor_t({batchSize, static_cast<size_t>(numOutput_)});
   }
 
-  void _forward(const tensor_t &input, tensor_t &output, const Dimensions &dims) const {
+  void _forward(const tensor_t &input, tensor_t &output) const {
     // Map input and output to matrices
-    auto X = input.asMatrixConst(dims.batchSize, dims.featureSize);
-    auto Y = output.asMatrix(dims.batchSize, numOutput_);
+    auto X = input.asMatrixConst(cachedBatchSize_, cachedFeatureSize_);
+    auto Y = output.asMatrix(cachedBatchSize_, numOutput_);
 
     // GEMM: Y = X * W^T + b
-    // Using noalias() to avoid temporary allocation
     Y.noalias() = X * weights_.transpose();
 
     // Add bias to each row
     Y.rowwise() += biases_.transpose();
   }
 
-  void _accumulateGradients(const tensor_t &input, const tensor_t &dY, const Dimensions &dims) {
+  void _accumulateGradients(const tensor_t &input, const tensor_t &dY) {
     // Map tensors to matrices
-    auto X = input.asMatrixConst(dims.batchSize, dims.featureSize);
-    auto dYmat = dY.asMatrixConst(dims.batchSize, numOutput_);
+    auto X = input.asMatrixConst(cachedBatchSize_, cachedFeatureSize_);
+    auto dYmat = dY.asMatrixConst(cachedBatchSize_, numOutput_);
 
     // Accumulate weight gradients: dW = dY^T * X
     dW_accum_.noalias() += dYmat.transpose() * X;
@@ -141,13 +136,13 @@ class FullyConnectedLayer : public BaseLayer {
     // Accumulate bias gradients: dB = sum(dY, axis=0)
     dB_accum_.noalias() += dYmat.colwise().sum().transpose();
 
-    accumSteps_ += dims.batchSize;
+    accumSteps_ += cachedBatchSize_;
   }
 
-  void _backward(const tensor_t &dY, tensor_t &dX, const Dimensions &dims) const {
+  void _backward(const tensor_t &dY, tensor_t &dX) const {
     // Map tensors to matrices
-    auto dYmat = dY.asMatrixConst(dims.batchSize, numOutput_);
-    auto dXmat = dX.asMatrix(dims.batchSize, dims.featureSize);
+    auto dYmat = dY.asMatrixConst(cachedBatchSize_, numOutput_);
+    auto dXmat = dX.asMatrix(cachedBatchSize_, cachedFeatureSize_);
 
     // Compute input gradients: dX = dY * W
     dXmat.noalias() = dYmat * weights_;
@@ -203,4 +198,9 @@ class FullyConnectedLayer : public BaseLayer {
 
   // Cached for backward pass
   tensor_t lastInput_;
+
+  // Cached dimensions (initialized once on first forward)
+  bool isDimInitialized_;
+  size_t cachedBatchSize_ = 0;    // Fixed after first forward
+  size_t cachedFeatureSize_ = 0;  // Fixed after first forward
 };

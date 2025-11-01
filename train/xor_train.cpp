@@ -2,6 +2,8 @@
 
 #include "Network.h"
 
+int _genRandomInt() { return abs(static_cast<int>(genRandom() * 1000)) % 4; }
+
 int main(int argc, char **argv) {
   // ============================================================
   // Network Preparation
@@ -19,16 +21,18 @@ int main(int argc, char **argv) {
   // Data Preparation
   // ============================================================
 
-  int numSamples = 4;
+  int numSamples = 50000;
   mat_t in_(numSamples, 2);
   mat_t label_(numSamples, 1);
 
-  in_.row(0) << 0.0f, 0.0f;
-  in_.row(1) << 0.0f, 1.0f;
-  in_.row(2) << 1.0f, 0.0f;
-  in_.row(3) << 1.0f, 1.0f;
-
   for (int i = 0; i < numSamples; i++) {
+    if (i % 5 == 0) {
+      val_t v = _genRandomInt();
+      in_.row(i) << v, v;
+    } else {
+      in_.row(i) << _genRandomInt(), _genRandomInt();
+    }
+
     label_.row(i) << (in_(i, 0) == in_(i, 1) ? 0.0f : 1.0f);
   }
 
@@ -39,7 +43,7 @@ int main(int argc, char **argv) {
   // Training Configuration
   // ============================================================
 
-  const int epochs = 10000;
+  const int epochs = 30;
   GD opt(0.01);  // learning rate = 0.01
 
   nn.train<BCE>(in, label, epochs, &opt);
@@ -51,12 +55,6 @@ int main(int argc, char **argv) {
   std::string modelName = "xor_model_" + std::to_string(getCurrentTimeMillis());
   std::string extension = ".json";
   nn.save(modelName + extension);
-
-  std::cout << "\n"
-            << std::string(60, '=') << std::endl;
-  std::cout << "Training completed!" << std::endl;
-  std::cout << "Model saved as: " << modelName << std::endl;
-  std::cout << std::string(60, '=') << std::endl;
 
   return 0;
 }

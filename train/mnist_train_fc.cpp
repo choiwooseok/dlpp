@@ -41,11 +41,5 @@ int main(int argc, char **argv) {
   std::string extension = ".json";
   nn.save(modelName + extension);
 
-  std::cout << "\n"
-            << std::string(60, '=') << std::endl;
-  std::cout << "Training completed!" << std::endl;
-  std::cout << "Model saved as: " << modelName << std::endl;
-  std::cout << std::string(60, '=') << std::endl;
-
   return 0;
 }

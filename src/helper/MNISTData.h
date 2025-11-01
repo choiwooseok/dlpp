@@ -9,29 +9,47 @@ using namespace std;
 
 class MNISTData {
  public:
+  static constexpr int IMAGE_WIDTH = 28;
+  static constexpr int IMAGE_HEIGHT = 28;
+  static constexpr int NUM_CHANNELS = 1;
+  static constexpr int IMAGE_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT * NUM_CHANNELS;
+  static constexpr int NUM_CLASSES = 10;
+
+ public:
   explicit MNISTData(const string &filePath) { _load(filePath); }
   ~MNISTData() = default;
 
  public:
-  vector<vector<val_t>> getImages() { return images; }
+  vector<vector<float>> getImages() { return images_; }
 
-  // one-hot
-  vector<vector<val_t>> getLabels() { return labels; }
+  // one-hot encoded labels
+  vector<vector<float>> getLabels() { return labels_; }
 
-  void print(int idx) {
-    cout << "label: ";
-    for (auto l : labels[idx]) {
-      cout << l << " ";
+  void printImage(int idx) {
+    if (idx < 0 || idx >= static_cast<int>(images_.size())) {
+      std::cerr << "Invalid image index: " << idx << std::endl;
+      return;
     }
-    cout << endl;
 
-    const vector<val_t> &image = images[idx];
-    string chars = ".#";
+    cout << "label: ";
+    const auto &label = labels_[idx];
+    for (int i = 0; i < NUM_CLASSES; ++i) {
+      if (label[i] > 0.5f) {
+        cout << i << endl;
+        break;
+      }
+    }
+
+    const vector<float> &image = images_[idx];
+
+    // ASCII characters for different intensities
+    const string chars = " .:-=+*#%@";
+
     cout << "image: " << endl;
-    for (int i = 0; i < 28; i++) {
-      for (int j = 0; j < 28; j++) {
-        int char_idx = (image[i * 28 + j] > 0 ? 1 : 0) * (chars.size() - 1);
-        cout << chars[char_idx] << " ";
+    for (int h = 0; h < IMAGE_HEIGHT; ++h) {
+      for (int w = 0; w < IMAGE_WIDTH; ++w) {
+        int charIdx = static_cast<int>(image[h * IMAGE_HEIGHT + w] * (chars.size() - 1));
+        cout << chars[charIdx] << " ";
       }
       cout << endl;
     }
@@ -40,24 +58,29 @@ class MNISTData {
 
  private:
   void _load(const string &filepath) {
-    images.clear();
-    labels.clear();
+    images_.clear();
+    labels_.clear();
 
     fstream file(filepath);
     string line;
     while (getline(file, line)) {
       vector<string> values = _split(line, ',');
-      float target = stof(values[0]);
-      vector<val_t> label(10);
-      label[static_cast<int>(target)] = val_t(1);
-      labels.push_back(label);
 
-      vector<val_t> image(28 * 28);
-      for (int i = 0; i < 28 * 28; i++) {
-        image[i] = stof(values[i + 1]) / val_t(255);
+      int labelIdx = stoi(values[0]);
+      labels_.push_back(_onehotEncode(labelIdx));
+
+      vector<float> image(IMAGE_SIZE);
+      for (int i = 0; i < IMAGE_SIZE; i++) {
+        image[i] = stof(values[i + 1]) / 255.f;
       }
-      images.push_back(image);
+      images_.push_back(image);
     }
+  }
+
+  vector<float> _onehotEncode(int idx) {
+    vector<float> v(NUM_CLASSES, 0.0f);
+    v[idx] = 1.0f;
+    return v;
   }
 
   std::vector<std::string> _split(const std::string &s, char delimiter) {
@@ -71,6 +94,6 @@ class MNISTData {
   }
 
  private:
-  vector<vector<val_t>> images;
-  vector<vector<val_t>> labels;
+  vector<vector<float>> images_;
+  vector<vector<float>> labels_;
 };

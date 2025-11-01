@@ -1,18 +1,21 @@
 #include <gtest/gtest.h>
 
 #include "Network.h"
-#include "helper/MNISTData.h"
+#include "helper/Cifar10Data.h"
+#include "layers/BatchNormLayer.h"
+#include "layers/DropoutLayer.h"
 
 #include <iostream>
+#include <iomanip>
 
 using namespace std;
 
-class MNISTFixture : public ::testing::TestWithParam<string> {
+class CIFAR10Fixture : public ::testing::Test {
  protected:
-  MNISTData data = MNISTData("../resource/mnist/mnist_test.csv");
-  tensor_t in = fromMat(toEigenMatrix(data.getImages()));
-  tensor_t label = fromMat(toEigenMatrix(data.getLabels()));
-  size_t N = in.shape[0];
+  Cifar10Data data = Cifar10Data("../resource/cifar10/");
+  tensor_t in;
+  tensor_t label;
+  size_t N;
 
   int correct;
   vector<int> classCorrect;
@@ -20,17 +23,30 @@ class MNISTFixture : public ::testing::TestWithParam<string> {
   vector<vector<int>> confusionMatrix;
 
   void SetUp() override {
+    data.readTestData();
+
+    in = fromMat(toEigenMatrix(data.getPixels()));
+    label = fromMat(toEigenMatrix(data.getLabels()));
+
+    N = in.shape[0];
+
+    // Data normalization: Scale to [0, 1]
+    cout << "Normalizing pixel values to [0, 1]..." << endl;
+    for (size_t i = 0; i < in.totalSize(); ++i) {
+      in[i] = in[i] / 255.0f;
+    }
+
     in.reshapeInPlace({
         N,
-        MNISTData::NUM_CHANNELS,
-        MNISTData::IMAGE_HEIGHT,
-        MNISTData::IMAGE_WIDTH,
+        Cifar10Data::NUM_CHANNELS,
+        Cifar10Data::IMAGE_HEIGHT,
+        Cifar10Data::IMAGE_WIDTH,
     });
 
     correct = 0;
-    classCorrect = vector<int>(MNISTData::NUM_CLASSES, 0);
-    classTotal = vector<int>(MNISTData::NUM_CLASSES, 0);
-    confusionMatrix = vector<vector<int>>(MNISTData::NUM_CLASSES, vector<int>(MNISTData::NUM_CLASSES, 0));
+    classCorrect = vector<int>(Cifar10Data::NUM_CLASSES, 0);
+    classTotal = vector<int>(Cifar10Data::NUM_CLASSES, 0);
+    confusionMatrix = vector<vector<int>>(Cifar10Data::NUM_CLASSES, vector<int>(Cifar10Data::NUM_CLASSES, 0));
   }
 
   void TearDown() override {}
@@ -50,12 +66,12 @@ class MNISTFixture : public ::testing::TestWithParam<string> {
     cout << "Per-Class Accuracy:" << endl;
     cout << string(60, '-') << endl;
 
-    for (int c = 0; c < MNISTData::NUM_CLASSES; ++c) {
+    for (int c = 0; c < Cifar10Data::NUM_CLASSES; ++c) {
       double classAcc = classTotal[c] > 0
                             ? static_cast<double>(classCorrect[c]) / static_cast<double>(classTotal[c])
                             : 0.0;
 
-      cout << setw(5) << left << c << ": "
+      cout << setw(12) << left << data.classToString(static_cast<Cifar10Data::Class>(c)) << ": "
            << fixed << setprecision(2) << (classAcc * 100.0) << "% ("
            << classCorrect[c] << "/" << classTotal[c] << ")" << endl;
     }
@@ -67,9 +83,9 @@ class MNISTFixture : public ::testing::TestWithParam<string> {
     cout << string(60, '-') << endl;
 
     // Matrix
-    for (int i = 0; i < MNISTData::NUM_CLASSES; ++i) {
-      cout << setw(5) << left << i << ":";
-      for (int j = 0; j < MNISTData::NUM_CLASSES; ++j) {
+    for (int i = 0; i < Cifar10Data::NUM_CLASSES; ++i) {
+      cout << setw(10) << left << data.classToString(static_cast<Cifar10Data::Class>(i)) << ":";
+      for (int j = 0; j < Cifar10Data::NUM_CLASSES; ++j) {
         cout << setw(5) << right << confusionMatrix[i][j];
       }
       cout << endl;
@@ -79,11 +95,9 @@ class MNISTFixture : public ::testing::TestWithParam<string> {
   }
 };
 
-TEST_P(MNISTFixture, MNISTTest) {
-  string model = GetParam();
-
+TEST_F(CIFAR10Fixture, CIFAR10) {
   Network nn;
-  nn.load("mnist_" + model + "_model.json");
+  nn.load("cifar10_model_1761975372948.json");
   nn.infos();
 
   for (size_t i = 0; i < N; ++i) {
@@ -102,18 +116,15 @@ TEST_P(MNISTFixture, MNISTTest) {
       correct++;
       classCorrect[expected]++;
     } else {
-      // cout << "predicted: " << predicted << endl;
+      // cout << "predicted: " << data.classToString(static_cast<Cifar10Data::Class>(predicted)) << " (" << predicted << ")" << endl;
       // data.printImage(i);
     }
+
+    cout << "\rProgress: " << i + 1 << "/" << N << std::flush;
   }
   cout << endl;
 
   printResult(correct, N, classCorrect, classTotal, confusionMatrix);
 
-  EXPECT_GT(static_cast<double>(correct) / static_cast<double>(N), 0.90);
+  EXPECT_GT(static_cast<double>(correct) / static_cast<double>(N), 0.70);
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    MNIST,
-    MNISTFixture,
-    ::testing::Values("fc", "cnn"));

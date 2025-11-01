@@ -26,7 +26,8 @@ class Conv2DLayer : public BaseLayer {
         stride_(stride),
         pad_(pad),
         patchSize_(inChannels * kernelHeight * kernelWidth),
-        accumSteps_(0) {
+        accumSteps_(0),
+        isDimInitialized_(false) {
     _initializeParameters(random);
   }
 
@@ -34,15 +35,19 @@ class Conv2DLayer : public BaseLayer {
     assert(X.ndim() == 4);
     assert(static_cast<int>(X.shape[1]) == inChannels_);
 
-    const auto dims = _extractDims(X);
-    if (dims.batchSize == 0) {
-      return _createOutputTensor(dims);
+    // Initialize dimensions on first forward pass
+    if (isDimInitialized_ == false) {
+      _initializeDims(X);
     }
 
-    _ensureWorkspaceSize(dims);
+    if (cachedBatchSize_ == 0) {
+      return _createOutputTensor(0);
+    }
+
+    _ensureWorkspaceSize(cachedBatchSize_);
 
     // Batched im2col transformation (in-place into workspace)
-    _buildBatchedColumnsInPlace(X, dims);
+    _buildBatchedColumnsInPlace(X, cachedBatchSize_);
 
     // Batched convolution via GEMM (in-place into output workspace)
     // Single GEMM: Y = W * X + b
@@ -50,7 +55,7 @@ class Conv2DLayer : public BaseLayer {
     outWorkspace_.colwise() += biases_;
 
     // Convert workspace to output tensor
-    tensor_t Y = _convertWorkspaceToTensor(dims);
+    tensor_t Y = _convertWorkspaceToTensor(cachedBatchSize_);
 
     lastInput_ = X;
     return Y;
@@ -59,26 +64,25 @@ class Conv2DLayer : public BaseLayer {
   tensor_t backward(const tensor_t &dY) override {
     assert(lastInput_.ndim() == 4);
 
-    const auto dims = _extractDims(lastInput_);
-    if (dims.batchSize == 0) {
+    if (cachedBatchSize_ == 0) {
       return tensor_t(lastInput_.shape);
     }
 
     // Build batched matrices
-    _ensureWorkspaceSize(dims);
-    _buildBatchedColumnsInPlace(lastInput_, dims);
-    _buildGradientMatrixInPlace(dY, dims);
+    _ensureWorkspaceSize(cachedBatchSize_);
+    _buildBatchedColumnsInPlace(lastInput_, cachedBatchSize_);
+    _buildGradientMatrixInPlace(dY);
 
     // Accumulate parameter gradients (GEMM)
     dW_accum_.noalias() += outWorkspace_ * colWorkspace_.transpose();
     dB_accum_.noalias() += outWorkspace_.rowwise().sum();
-    accumSteps_ += dims.batchSize;
+    accumSteps_ += cachedBatchSize_;
 
     // Compute input gradients (Reuse colWorkspace for gradient)
     colWorkspace_.noalias() = weights_.transpose() * outWorkspace_;
 
     // Scatter back to input space (col2im)
-    tensor_t dX = _scatterToInput(dims);
+    tensor_t dX = _scatterToInput();
 
     return dX;
   }
@@ -127,38 +131,27 @@ class Conv2DLayer : public BaseLayer {
   void setBiases(const vec_t &biases) { biases_ = biases; }
 
  private:
-  struct ConvDimensions {
-    int batchSize;
-    int inputChannels;
-    int inputHeight;
-    int inputWidth;
-    int outputHeight;
-    int outputWidth;
-    int numColumns;
-  };
+  void _initializeDims(const tensor_t &X) {
+    cachedBatchSize_ = X.shape[0];
+    cachedInputHeight_ = static_cast<int>(X.shape[2]);
+    cachedInputWidth_ = static_cast<int>(X.shape[3]);
+    cachedOutputHeight_ = (cachedInputHeight_ + 2 * pad_ - kernelHeight_) / stride_ + 1;
+    cachedOutputWidth_ = (cachedInputWidth_ + 2 * pad_ - kernelWidth_) / stride_ + 1;
+    cachedNumColumns_ = cachedOutputHeight_ * cachedOutputWidth_;
 
-  ConvDimensions _extractDims(const tensor_t &X) const {
-    ConvDimensions dims;
-    dims.batchSize = static_cast<int>(X.shape[0]);
-    dims.inputChannels = static_cast<int>(X.shape[1]);
-    dims.inputHeight = static_cast<int>(X.shape[2]);
-    dims.inputWidth = static_cast<int>(X.shape[3]);
-    dims.outputHeight = (dims.inputHeight + 2 * pad_ - kernelHeight_) / stride_ + 1;
-    dims.outputWidth = (dims.inputWidth + 2 * pad_ - kernelWidth_) / stride_ + 1;
-    dims.numColumns = dims.outputHeight * dims.outputWidth;
-    return dims;
+    isDimInitialized_ = true;
   }
 
-  tensor_t _createOutputTensor(const ConvDimensions &dims) const {
-    return tensor_t({static_cast<size_t>(dims.batchSize),
+  tensor_t _createOutputTensor(size_t batchSize) const {
+    return tensor_t({batchSize,
                      static_cast<size_t>(outChannels_),
-                     static_cast<size_t>(dims.outputHeight),
-                     static_cast<size_t>(dims.outputWidth)});
+                     static_cast<size_t>(cachedOutputHeight_),
+                     static_cast<size_t>(cachedOutputWidth_)});
   }
 
   // Workspace management for memory reuse
-  void _ensureWorkspaceSize(const ConvDimensions &dims) {
-    const int totalCols = dims.batchSize * dims.numColumns;
+  void _ensureWorkspaceSize(size_t batchSize) {
+    const int totalCols = static_cast<int>(batchSize) * cachedNumColumns_;
 
     // Resize workspaces only if needed
     if (colWorkspace_.rows() != patchSize_ || colWorkspace_.cols() != totalCols) {
@@ -169,53 +162,49 @@ class Conv2DLayer : public BaseLayer {
     }
   }
 
-  void _buildBatchedColumnsInPlace(const tensor_t &X, const ConvDimensions &dims) {
+  void _buildBatchedColumnsInPlace(const tensor_t &X, size_t batchSize) {
     // Parallel im2col for each sample
-    for (int n = 0; n < dims.batchSize; ++n) {
-      const int colOffset = n * dims.numColumns;
+    for (size_t n = 0; n < batchSize; ++n) {
+      const int colOffset = static_cast<int>(n) * cachedNumColumns_;
 
       // Direct im2col into workspace block
       auto K = X.im2colSample(n, kernelHeight_, kernelWidth_, stride_, pad_);
-      colWorkspace_.block(0, colOffset, patchSize_, dims.numColumns) = K;
+      colWorkspace_.block(0, colOffset, patchSize_, cachedNumColumns_) = K;
     }
   }
 
-  tensor_t _convertWorkspaceToTensor(const ConvDimensions &dims) const {
-    tensor_t Y = _createOutputTensor(dims);
-    const int outW = dims.outputWidth;
+  tensor_t _convertWorkspaceToTensor(size_t batchSize) const {
+    tensor_t Y = _createOutputTensor(batchSize);
 
     // Optimized copy with direct pointer access
     val_t *yData = Y.data.data();
     const val_t *workData = outWorkspace_.data();
 
-    for (int n = 0; n < dims.batchSize; ++n) {
-      const int colOffset = n * dims.numColumns;
-      val_t *ySample = yData + (n * outChannels_ * dims.numColumns);
+    for (size_t n = 0; n < batchSize; ++n) {
+      const int colOffset = static_cast<int>(n) * cachedNumColumns_;
+      val_t *ySample = yData + (n * outChannels_ * cachedNumColumns_);
 
       for (int oc = 0; oc < outChannels_; ++oc) {
         const val_t *workRow = workData + (oc * outWorkspace_.cols() + colOffset);
-        val_t *yChannel = ySample + (oc * dims.numColumns);
+        val_t *yChannel = ySample + (oc * cachedNumColumns_);
 
         // Memcpy for contiguous data
-        std::memcpy(yChannel, workRow, dims.numColumns * sizeof(val_t));
+        std::memcpy(yChannel, workRow, cachedNumColumns_ * sizeof(val_t));
       }
     }
 
     return Y;
   }
 
-  void _buildGradientMatrixInPlace(const tensor_t &dY, const ConvDimensions &dims) {
-    const int outW = dims.outputWidth;
-    const int outH = dims.outputHeight;
-
+  void _buildGradientMatrixInPlace(const tensor_t &dY) {
     // Direct copy into workspace
-    for (int n = 0; n < dims.batchSize; ++n) {
-      const int colOffset = n * dims.numColumns;
+    for (size_t n = 0; n < cachedBatchSize_; ++n) {
+      const int colOffset = static_cast<int>(n) * cachedNumColumns_;
 
       for (int oc = 0; oc < outChannels_; ++oc) {
-        for (int oh = 0; oh < outH; ++oh) {
-          for (int ow = 0; ow < outW; ++ow) {
-            const int col = oh * outW + ow;
+        for (int oh = 0; oh < cachedOutputHeight_; ++oh) {
+          for (int ow = 0; ow < cachedOutputWidth_; ++ow) {
+            const int col = oh * cachedOutputWidth_ + ow;
             outWorkspace_(oc, colOffset + col) = dY.at(n, oc, oh, ow);
           }
         }
@@ -223,20 +212,20 @@ class Conv2DLayer : public BaseLayer {
     }
   }
 
-  tensor_t _scatterToInput(const ConvDimensions &dims) const {
-    tensor_t dX({static_cast<size_t>(dims.batchSize),
-                 static_cast<size_t>(dims.inputChannels),
-                 static_cast<size_t>(dims.inputHeight),
-                 static_cast<size_t>(dims.inputWidth)});
+  tensor_t _scatterToInput() const {
+    tensor_t dX({cachedBatchSize_,
+                 static_cast<size_t>(inChannels_),
+                 static_cast<size_t>(cachedInputHeight_),
+                 static_cast<size_t>(cachedInputWidth_)});
     dX.fill(0);
 
     // Optimized col2im with cache-friendly access
-    for (int n = 0; n < dims.batchSize; ++n) {
-      const int colOffset = n * dims.numColumns;
+    for (size_t n = 0; n < cachedBatchSize_; ++n) {
+      const int colOffset = static_cast<int>(n) * cachedNumColumns_;
 
-      for (int col = 0; col < dims.numColumns; ++col) {
-        const int oh = col / dims.outputWidth;
-        const int ow = col % dims.outputWidth;
+      for (int col = 0; col < cachedNumColumns_; ++col) {
+        const int oh = col / cachedOutputWidth_;
+        const int ow = col % cachedOutputWidth_;
 
         int patchIdx = 0;
         for (int ic = 0; ic < inChannels_; ++ic) {
@@ -245,7 +234,7 @@ class Conv2DLayer : public BaseLayer {
               const int ih = oh * stride_ + kh - pad_;
               const int iw = ow * stride_ + kw - pad_;
 
-              if (ih >= 0 && ih < dims.inputHeight && iw >= 0 && iw < dims.inputWidth) {
+              if (ih >= 0 && ih < cachedInputHeight_ && iw >= 0 && iw < cachedInputWidth_) {
                 dX.at(n, ic, ih, iw) += colWorkspace_(patchIdx, colOffset + col);
               }
               ++patchIdx;
@@ -317,4 +306,13 @@ class Conv2DLayer : public BaseLayer {
 
   // Cached for backward pass
   tensor_t lastInput_;
+
+  // Cached dimensions (initialized once on first forward)
+  bool isDimInitialized_;
+  size_t cachedBatchSize_ = 0;  // Fixed after first forward
+  int cachedInputHeight_ = 0;   // Fixed after first forward
+  int cachedInputWidth_ = 0;    // Fixed after first forward
+  int cachedOutputHeight_ = 0;  // Fixed after first forward
+  int cachedOutputWidth_ = 0;   // Fixed after first forward
+  int cachedNumColumns_ = 0;    // Fixed after first forward
 };

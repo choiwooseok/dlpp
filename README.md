@@ -12,6 +12,8 @@
     - Avg
     - Max
   - Flatten
+  - BatchNorm
+  - Dropout
   - Activations
     - LRelu
     - Relu
@@ -32,27 +34,41 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j12
 ```
 
-# MNIST CSV from
-* https://github.com/phoebetronic/mnist
+# Data ( Train / Test )
+- locate to resource/
+  - MNIST CSV from https://github.com/phoebetronic/mnist
+  - Cifar10 from https://www.cs.toronto.edu/~kriz/cifar.html
 
-# Executables
-- minist_train_fc
-- minist_train_conv
-- xor_train
-- dlpp_test (Google Test)
-  - XORTEST
-  - MNIST
-    - M_FC
-    - M_CNN
-
+# Binaries
+- for training
+  - xor_train
+  - minist_train_fc
+  - minist_train_conv
+  - cifar10_train
+- dlpp_test (gtest)
 ```
-./dlpp_test --gtest_filter="*XORTest*" 
-./dlpp_test --gtest_filter="*M_FC*" 
-./dlpp_test --gtest_filter="*M_CNN*" 
+# see list
+./dlpp_test --gtest_list_tests
+
+XORTestSuite.
+  XORTest
+CIFAR10Fixture.
+  CIFAR10
+MNIST/MNISTFixture.
+  MNISTTest/0  # GetParam() = "fc"
+  MNISTTest/1  # GetParam() = "cnn"
+```
+
+- run with filters
+```
+./dlpp_test --gtest_filter="*XOR*"
+./dlpp_test --gtest_filter="*CIFAR10*"
+./dlpp_test --gtest_filter="*MNISTTest/0*"
+./dlpp_test --gtest_filter="*MNISTTest/1*"
 ```
 
 # 3rd party
 - @see here [conanfile.txt](conanfile.txt)
-- nlohmann_json for save & load
+- nlohmann_json for serialization
 - gtest for test
 - Eigen for matrix calc
